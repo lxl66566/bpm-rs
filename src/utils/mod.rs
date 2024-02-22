@@ -16,6 +16,18 @@ macro_rules! error_exit  {
 }
 pub use error_exit;
 
+#[allow(unused_imports)]
+#[macro_export]
+macro_rules! assert_exit  {
+    ($cond:expr $(, $arg:expr)*) => {
+        if !$cond
+        {
+            error_exit!($($arg),*);
+        }
+    };
+}
+pub use assert_exit;
+
 /// join given strs.
 pub fn path_join(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> PathBuf {
     paths.into_iter().fold(PathBuf::new(), |acc, p| acc.join(p))

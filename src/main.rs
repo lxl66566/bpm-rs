@@ -14,6 +14,7 @@ use url::Url;
 static cli: OnceLock<Cli> = OnceLock::new();
 
 fn main() -> Result<()> {
+    env_logger::init();
     // cli.set(Cli::parse());
     RepoHandler::new("eza".into()).ask(false).get_asset();
     Ok(())

@@ -1,9 +1,10 @@
 use crate::utils::constants::OPTION_REPO_NUM;
 use crate::utils::err::{self, invalid_asset_error};
-use crate::utils::{error_exit, fmt_repo_list, path_join};
+use crate::utils::{assert_exit, error_exit, fmt_repo_list, path_join};
 use anyhow::Result;
 use assert2::check;
 use colored::Colorize;
+use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env::consts::{ARCH, OS};
@@ -11,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::vec::Vec;
 use std::{fmt, path};
 use url::Url;
+
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[non_exhaustive]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
@@ -31,9 +34,9 @@ pub struct RepoHandler {
 impl RepoHandler {
     pub fn new(name: String) -> Self {
         #[cfg(windows)]
-        assert!(
-            ["app", "bin"].contains(&name.as_str()),
-            "Invalid repo name: {}. Must not be one of: app, bin",
+        assert_exit!(
+            !["app", "bin"].contains(&name.as_str()),
+            "Invalid repo name: `{}`. Must not be one of: app, bin",
             name
         );
         RepoHandler {
@@ -90,7 +93,7 @@ impl RepoHandler {
             "github" => Url::parse("https://api.github.com"),
             _ => unimplemented!(),
         }
-        .expect("hardcoded URL is known to be valid")
+        .expect("hardcoded URL should be valid")
     }
 
     pub fn file_list(&mut self) -> &Vec<PathBuf> {
@@ -109,13 +112,26 @@ impl RepoHandler {
         self.installed_files.push(file);
     }
 
-    pub fn set_url(&mut self, url: &str) -> &mut Self {
-        let binding = Url::parse(url).expect("parsing invalid URL.");
-        let parts: Vec<&str> = binding.path().trim_matches('/').split('/').collect();
-        assert_eq!(parts.len(), 2, "parsing invalid URL");
-        self.repo_owner = Some(parts[0].to_string());
-        self.repo_name = Some(parts[1].to_string());
+    pub fn set_by_fullname(mut self, full_name: &str) -> Self {
+        let mut iter = full_name.split('/');
+        self.repo_name = Some(
+            iter.next()
+                .unwrap_or_else(|| error_exit!("An error occurs in parsing full name 1st part"))
+                .to_string(),
+        );
+        self.repo_owner = Some(
+            iter.next()
+                .unwrap_or_else(|| error_exit!("An error occurs in parsing full name 2nd part"))
+                .to_string(),
+        );
+        debug_assert!(iter.next().is_none(), "fullname has more than 2 parts");
         self
+    }
+
+    pub fn set_by_url(self, url: &str) -> Self {
+        let binding = Url::parse(url).expect("parsing invalid URL.");
+        let full_name = binding.path().trim_matches('/');
+        self.set_by_fullname(full_name)
     }
 
     fn search(&self, page: u32) -> Result<Vec<String>> {
@@ -126,16 +142,21 @@ impl RepoHandler {
                 .as_str(),
             &[
                 ("q", format!("{} in:name", self.name).as_str()),
-                ("sort", "stars"),
                 ("page", page.to_string().as_str()),
                 ("per_page", &OPTION_REPO_NUM.to_string()),
             ],
-        )?;
-        let response = reqwest::blocking::get(url);
+        )
+        .expect("This construct should be ok.");
+        info!("searching url: {}", &url);
+        let client = reqwest::blocking::Client::builder()
+            .user_agent(APP_USER_AGENT)
+            .build()?;
+        let response = client.get(url).send();
         match response {
             Ok(r) if r.status().is_success() => {
                 let data: serde_json::Value = r.json().unwrap();
-                if let Some(items) = data["items"].as_array() {
+                trace!("search response: {:?}", &data);
+                if let Some(items) = data.as_array() {
                     let repos: Vec<String> = items
                         .iter()
                         .map(|item| item["html_url"].as_str().unwrap_or_default().to_string())
@@ -154,7 +175,7 @@ impl RepoHandler {
         }
     }
 
-    pub fn ask(&mut self, quiet: bool) -> &mut Self {
+    pub fn ask(mut self, quiet: bool) -> Self {
         let mut page = 1;
         loop {
             if let Ok(repo_selections) = self.search(page) {
@@ -164,7 +185,7 @@ impl RepoHandler {
                 }
                 if quiet {
                     eprintln!("auto select repo: {}", repo_selections[0]);
-                    return self.set_url(&repo_selections[0]);
+                    return self.set_by_url(&repo_selections[0]);
                 }
                 for (i, item) in repo_selections.iter().enumerate() {
                     println!("{}: {}", i + 1, item);
@@ -191,14 +212,14 @@ impl RepoHandler {
                 };
 
                 match index {
-                    1..=OPTION_REPO_NUM => return self.set_url(&repo_selections[index - 1]),
+                    1..=OPTION_REPO_NUM => return self.set_by_url(&repo_selections[index - 1]),
                     _ => eprintln!(
                         "Invalid input: the number should not be more than {}",
                         OPTION_REPO_NUM
                     ),
                 }
             } else {
-                error_exit!("An error occured in searching.");
+                error_exit!("An error occured in constructing url in searching.");
             }
         }
     }
@@ -277,8 +298,8 @@ impl RepoHandler {
                 // further sort by archive format
                 #[cfg(windows)]
                 {
-                    assets.sort_by(|a, b| a.contains(".tar.").cmp(&b.contains(".tar.")));
-                    assets.sort_by(|a, b| a.ends_with(".zip").cmp(&b.ends_with(".zip")));
+                    assets.sort_by_key(|a| a.contains(".tar."));
+                    assets.sort_by_key(|a| a.ends_with(".zip"));
                 }
                 #[cfg(not(windows))]
                 {

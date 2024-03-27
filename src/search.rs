@@ -1,16 +1,15 @@
 use crate::utils::constants::OPTION_REPO_NUM;
-use crate::utils::err::{self, invalid_asset_error};
-use crate::utils::{assert_exit, error_exit, fmt_repo_list, path_join};
+use crate::utils::err::MyError;
+use crate::utils::{fmt_repo_list, path_join, UrlJoinAll};
 use anyhow::Result;
-use assert2::check;
-use colored::Colorize;
+use assert2::{assert, check};
+use die_exit::{die, Die, DieWith};
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env::consts::{ARCH, OS};
+use std::fmt::{self, format};
 use std::path::{Path, PathBuf};
-use std::vec::Vec;
-use std::{fmt, path};
 use url::Url;
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -34,9 +33,9 @@ pub struct RepoHandler {
 impl RepoHandler {
     pub fn new(name: String) -> Self {
         #[cfg(windows)]
-        assert_exit!(
+        assert!(
             !["app", "bin"].contains(&name.as_str()),
-            "Invalid repo name: `{}`. Must not be one of: app, bin",
+            "Invalid repo name: `{}`. Must not be one of them: `app`, `bin`",
             name
         );
         RepoHandler {
@@ -78,67 +77,73 @@ impl RepoHandler {
             self.repo_name.is_some() || self.repo_owner.is_some(),
             "repo_name and repo_owner must be set"
         );
-        self.api_base()
-            .join(
-                Path::new(self.repo_owner.as_deref().unwrap())
-                    .join(self.repo_name.as_deref().unwrap())
-                    .to_str()
-                    .expect("url parse error"),
-            )
-            .expect("url parse error")
+        self.base()
+            .join_all_str([
+                self.repo_owner.as_deref().unwrap(),
+                self.repo_name.as_deref().unwrap(),
+            ])
+            .die_with(|e| format!("trying to construct an invalid url. Err: {e}"))
     }
 
+    /// use Github as default.
+    pub fn base(&self) -> Url {
+        Url::parse("https://github.com").expect("hardcoded URL should be valid")
+    }
+
+    /// use Github as default.
     pub fn api_base(&self) -> Url {
-        match self.site {
-            "github" => Url::parse("https://api.github.com"),
-            _ => unimplemented!(),
-        }
-        .expect("hardcoded URL should be valid")
+        Url::parse("https://api.github.com").expect("hardcoded URL should be valid")
     }
 
-    pub fn file_list(&mut self) -> &Vec<PathBuf> {
+    pub fn dedup_file_list(&mut self) {
         self.installed_files.sort();
         self.installed_files.dedup();
-        &self.installed_files
-    }
-
-    pub fn file_list_mut(&mut self) -> &mut Vec<PathBuf> {
-        self.installed_files.sort();
-        self.installed_files.dedup();
-        &mut self.installed_files
+        debug!("dedup file list success: {:#?}", self.installed_files);
     }
 
     pub fn add_file_list(&mut self, file: PathBuf) {
-        self.installed_files.push(file);
+        self.installed_files.push(file.clone());
+        debug!("added file `{}` to file_list", file.display());
     }
 
+    /// Set the `repo_name` and `repo_owner` by fullname.
+    /// For example, with the full name `me/myrepo`, the `repo_owner` would be
+    /// `me`, and the `repo_name` would be `myrepo`.
+    #[allow(clippy::unwrap_used)]
     pub fn set_by_fullname(mut self, full_name: &str) -> Self {
-        let mut iter = full_name.split('/');
-        self.repo_name = Some(
-            iter.next()
-                .unwrap_or_else(|| error_exit!("An error occurs in parsing full name 1st part"))
-                .to_string(),
-        );
+        let mut iter = full_name.trim_matches('/').split('/');
         self.repo_owner = Some(
             iter.next()
-                .unwrap_or_else(|| error_exit!("An error occurs in parsing full name 2nd part"))
+                .unwrap_or_else(|| die!("An error occurs in parsing full name 1st part"))
+                .to_string(),
+        );
+        self.repo_name = Some(
+            iter.next()
+                .unwrap_or_else(|| die!("An error occurs in parsing full name 2nd part"))
                 .to_string(),
         );
         debug_assert!(iter.next().is_none(), "fullname has more than 2 parts");
+        debug!(
+            "set repo_name: {}, repo_owner: {}",
+            self.repo_name.as_ref().unwrap(),
+            self.repo_owner.as_ref().unwrap()
+        );
         self
     }
-
+    /// Set the `repo_name` and `repo_owner` by url.
+    /// For example, with the url `https://github.com/lxl66566/bpm-rs/`, the `repo_owner` would be
+    /// `lxl66566`, and the `repo_name` would be `bpm-rs`.
     pub fn set_by_url(self, url: &str) -> Self {
         let binding = Url::parse(url).expect("parsing invalid URL.");
-        let full_name = binding.path().trim_matches('/');
+        let full_name = binding.path();
         self.set_by_fullname(full_name)
     }
 
     fn search(&self, page: u32) -> Result<Vec<String>> {
+        // Search API: https://docs.github.com/zh/rest/search/search?apiVersion=2022-11-28#search-repositories
         let url = Url::parse_with_params(
             self.api_base()
-                .join("search")?
-                .join("repositories")?
+                .join_all_str(["search", "repositories"])?
                 .as_str(),
             &[
                 ("q", format!("{} in:name", self.name).as_str()),
@@ -163,19 +168,19 @@ impl RepoHandler {
                         .collect();
                     Ok(repos)
                 } else {
-                    error_exit!("No items found in the response");
+                    die!("No items found in the response");
                 }
             }
             Ok(r) => {
-                error_exit!("Unexpected status code: {}", r.status());
+                die!("Unexpected status code: {}", r.status());
             }
             Err(e) => {
-                error_exit!("Error fetching data: {}", e);
+                die!("Error fetching data: {}", e);
             }
         }
     }
 
-    pub fn ask(mut self, quiet: bool) -> Self {
+    pub fn ask(self, quiet: bool) -> Self {
         let mut page = 1;
         loop {
             if let Ok(repo_selections) = self.search(page) {
@@ -192,7 +197,7 @@ impl RepoHandler {
                 }
                 let temp = match self.read_input("please select a repo to download (default 1), `m` for more, `p` for previous: ") {
                     Ok(val) => val.trim().to_string(),
-                    Err(_) => error_exit!("Invalid input")
+                    Err(_) => die!("Invalid input")
                 };
 
                 let index = if temp.is_empty() {
@@ -219,7 +224,7 @@ impl RepoHandler {
                     ),
                 }
             } else {
-                error_exit!("An error occured in constructing url in searching.");
+                die!("An error occured in constructing url in searching.");
             }
         }
     }
@@ -228,22 +233,19 @@ impl RepoHandler {
         debug_assert!(self.repo_owner.is_some() && self.repo_name.is_some());
         let api = self
             .api_base()
-            .join(
-                path_join([
-                    "repos",
-                    self.repo_owner.as_deref().unwrap(),
-                    self.repo_name.as_deref().unwrap(),
-                    "latest",
-                ])
-                .to_str()
-                .expect("Invalid path."),
-            )
+            .join_all_str([
+                "repos",
+                self.repo_owner.as_deref().unwrap(),
+                self.repo_name.as_deref().unwrap(),
+                "latest",
+            ])
             .expect("Invalid path.");
+        info!("Get assets from API: {}", api);
         match reqwest::blocking::get(api) {
             Ok(response) if response.status().is_success() => {
                 let releases: Vec<serde_json::Value> = response.json().unwrap();
                 if releases.is_empty() {
-                    error_exit!(
+                    die!(
                         "No releases found for {}/{}",
                         self.repo_owner.as_ref().unwrap(),
                         self.repo_name.as_ref().unwrap()
@@ -277,7 +279,7 @@ impl RepoHandler {
                 if !self.name.to_lowercase().contains("win") {
                     assets.retain(|asset| asset.to_lowercase().contains("win"));
                     if assets.is_empty() {
-                        invalid_asset_error();
+                        die!(MyError::NoAvailableAsset);
                     }
                 }
 
@@ -312,22 +314,23 @@ impl RepoHandler {
                     eprintln!("Selected asset: {}", selected_asset);
                     Some(self)
                 } else {
-                    invalid_asset_error()
+                    die!(MyError::NoAvailableAsset);
                 }
             }
             Ok(response) => {
-                error_exit!(
+                die!(
                     "Unexpected response status:{} from the releases API",
                     response.status()
                 );
             }
             Err(err) => {
-                error_exit!("Error fetching releases data: {}", err);
+                die!("Error fetching releases data: {}", err);
             }
         }
     }
 
-    ///  update assets list. Returns `None` if has no update, `(old_version, new_version)` if has update.
+    ///  update assets list. Returns `None` if has no update, `(old_version,
+    /// new_version)` if has update.
     pub fn update_asset(&mut self) -> Option<(String, String)> {
         let old_version = self.version.clone().unwrap();
         if self.get_asset().is_some() {
@@ -384,5 +387,21 @@ impl Ord for RepoHandler {
 impl PartialOrd for RepoHandler {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_set_by_url() {
+        let repo = RepoHandler::default().set_by_url("https://github.com/lxl66566/bpm-rs/");
+        assert_eq!(
+            repo.clone().url().as_str().trim_matches('/'),
+            "https://github.com/lxl66566/bpm-rs"
+        );
+        assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
+        assert_eq!(repo.repo_owner.unwrap(), "lxl66566");
     }
 }

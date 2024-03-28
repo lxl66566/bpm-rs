@@ -20,3 +20,4 @@ env_logger = "0.11.2"
 die-exit = { version = "0.5.0", features = ["red"] }
 thiserror = "1.0.58"
 once_cell = "1.19.0"
+terminal-menu = "3.0.0"

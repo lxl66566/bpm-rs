@@ -1,5 +1,6 @@
 pub mod constants;
 pub mod err;
+pub mod filter;
 
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -19,6 +20,8 @@ pub trait UrlJoinAll<'a> {
 }
 
 impl<'a> UrlJoinAll<'a> for Url {
+    /// Join all [`String`] to a [`Url`] object. The result [`Url`] must not
+    /// have trailing slash.
     fn join_all<I: IntoIterator<Item = String>>(&self, paths: I) -> Result<Url, url::ParseError> {
         let mut url = self.clone();
         for mut path in paths {
@@ -27,13 +30,21 @@ impl<'a> UrlJoinAll<'a> for Url {
             }
             url = url.join(path.as_str())?;
         }
+        let _ = url
+            .path_segments_mut()
+            .expect(
+                "An error occurs in popping trailing slash of a url; the given url cannot be base.",
+            )
+            .pop_if_empty();
         Ok(url)
     }
+    /// Join all &str to a [`Url`] object. The result [`Url`] must not
+    /// have trailing slash.
     fn join_all_str<I: IntoIterator<Item = &'a str>>(
         &self,
         paths: I,
     ) -> Result<Url, url::ParseError> {
-        self.join_all(paths.into_iter().map(|s| s.to_string()))
+        self.join_all(paths.into_iter().map(std::string::ToString::to_string))
     }
 }
 
@@ -61,11 +72,8 @@ mod tests {
         let base_url = Url::parse("https://codegeex.cn").unwrap();
         let paths = ["foo", "bar", "baz/asdf"];
         let url = base_url
-            .join_all(paths.iter().map(|s| s.to_string()))
+            .join_all(paths.iter().map(std::string::ToString::to_string))
             .unwrap();
-        assert_eq!(
-            url.as_str().trim_matches('/'),
-            "https://codegeex.cn/foo/bar/baz/asdf"
-        );
+        assert_eq!(url.as_str(), "https://codegeex.cn/foo/bar/baz/asdf");
     }
 }

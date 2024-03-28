@@ -1,3 +1,12 @@
+#![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
+#![allow(
+    clippy::expect_used,
+    clippy::clone_on_ref_ptr,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::missing_docs_in_private_items
+)]
+
 mod cli;
 mod search;
 mod utils;

@@ -1,14 +1,16 @@
 use crate::utils::constants::OPTION_REPO_NUM;
 use crate::utils::err::MyError;
-use crate::utils::{fmt_repo_list, path_join, UrlJoinAll};
+use crate::utils::{fmt_repo_list, UrlJoinAll};
+use crate::CLI;
 use anyhow::Result;
-use assert2::{assert, check};
+use assert2::assert;
+use colored::Colorize;
 use die_exit::{die, Die, DieWith};
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env::consts::{ARCH, OS};
-use std::fmt::{self, format};
+use std::fmt;
 use std::path::{Path, PathBuf};
 use url::Url;
 
@@ -30,6 +32,8 @@ pub struct RepoHandler {
     one_bin: bool,
 }
 
+// fn filter_assets(assets: Vec<&str>) -> &str {}
+
 impl RepoHandler {
     pub fn new(name: String) -> Self {
         #[cfg(windows)]
@@ -38,10 +42,13 @@ impl RepoHandler {
             "Invalid repo name: `{}`. Must not be one of them: `app`, `bin`",
             name
         );
-        RepoHandler {
-            name: name.clone(),
+        Self {
             #[cfg(not(windows))]
-            bin_name: name.clone(),
+            name: name.clone(),
+            #[cfg(windows)]
+            name,
+            #[cfg(not(windows))]
+            bin_name: name,
             #[cfg(windows)]
             bin_name: "*.exe".into(),
             site: "github",
@@ -59,7 +66,10 @@ impl RepoHandler {
     pub fn with_bin_name(mut self, bin_name: String) -> Self {
         #[cfg(windows)]
         {
-            self.bin_name = if bin_name.ends_with(".exe") {
+            self.bin_name = if std::path::Path::new(&bin_name)
+                .extension()
+                .map_or(false, |ext| ext.eq_ignore_ascii_case("exe"))
+            {
                 bin_name
             } else {
                 bin_name + ".exe"
@@ -73,7 +83,7 @@ impl RepoHandler {
     }
 
     pub fn url(&self) -> Url {
-        check!(
+        assert!(
             self.repo_name.is_some() || self.repo_owner.is_some(),
             "repo_name and repo_owner must be set"
         );
@@ -86,11 +96,13 @@ impl RepoHandler {
     }
 
     /// use Github as default.
+    #[allow(clippy::unused_self)]
     pub fn base(&self) -> Url {
         Url::parse("https://github.com").expect("hardcoded URL should be valid")
     }
 
     /// use Github as default.
+    #[allow(clippy::unused_self)]
     pub fn api_base(&self) -> Url {
         Url::parse("https://api.github.com").expect("hardcoded URL should be valid")
     }
@@ -139,40 +151,43 @@ impl RepoHandler {
         self.set_by_fullname(full_name)
     }
 
-    fn search(&self, page: u32) -> Result<Vec<String>> {
+    fn search(&self) -> Result<Vec<String>> {
         // Search API: https://docs.github.com/zh/rest/search/search?apiVersion=2022-11-28#search-repositories
         let url = Url::parse_with_params(
             self.api_base()
                 .join_all_str(["search", "repositories"])?
-                .as_str(),
+                .as_str()
+                .trim_matches('/'),
             &[
                 ("q", format!("{} in:name", self.name).as_str()),
-                ("page", page.to_string().as_str()),
-                ("per_page", &OPTION_REPO_NUM.to_string()),
+                ("page", "1"),
             ],
         )
         .expect("This construct should be ok.");
-        info!("searching url: {}", &url);
         let client = reqwest::blocking::Client::builder()
             .user_agent(APP_USER_AGENT)
             .build()?;
+        debug!("build with APP_USER_AGENT: {APP_USER_AGENT}");
+        info!("search url: {}", &url);
         let response = client.get(url).send();
         match response {
             Ok(r) if r.status().is_success() => {
                 let data: serde_json::Value = r.json().unwrap();
-                trace!("search response: {:?}", &data);
-                if let Some(items) = data.as_array() {
-                    let repos: Vec<String> = items
-                        .iter()
-                        .map(|item| item["html_url"].as_str().unwrap_or_default().to_string())
-                        .collect();
-                    Ok(repos)
-                } else {
-                    die!("No items found in the response");
-                }
+                data["items"].as_array().map_or_else(
+                    || {
+                        die!("No items found in the response");
+                    },
+                    |items| {
+                        let repos: Vec<String> = items
+                            .iter()
+                            .map(|item| item["html_url"].as_str().unwrap_or_default().to_string())
+                            .collect();
+                        Ok(repos)
+                    },
+                )
             }
             Ok(r) => {
-                die!("Unexpected status code: {}", r.status());
+                die!("Unexpected status: {}", r.status());
             }
             Err(e) => {
                 die!("Error fetching data: {}", e);
@@ -180,80 +195,68 @@ impl RepoHandler {
         }
     }
 
+    #[allow(clippy::significant_drop_tightening)]
     pub fn ask(self, quiet: bool) -> Self {
-        let mut page = 1;
-        loop {
-            if let Ok(repo_selections) = self.search(page) {
-                if repo_selections.is_empty() {
-                    println!("No repos found in this page");
-                    continue;
-                }
-                if quiet {
-                    eprintln!("auto select repo: {}", repo_selections[0]);
-                    return self.set_by_url(&repo_selections[0]);
-                }
-                for (i, item) in repo_selections.iter().enumerate() {
-                    println!("{}: {}", i + 1, item);
-                }
-                let temp = match self.read_input("please select a repo to download (default 1), `m` for more, `p` for previous: ") {
-                    Ok(val) => val.trim().to_string(),
-                    Err(_) => die!("Invalid input")
-                };
-
-                let index = if temp.is_empty() {
-                    1
-                } else {
-                    match temp.parse::<usize>() {
-                        Ok(val) => val,
-                        Err(_) => {
-                            match temp.as_str() {
-                                "m" => page += 1,
-                                "p" => page = page.saturating_sub(1),
-                                _ => eprintln!("Invalid input"),
-                            }
-                            continue;
-                        }
-                    }
-                };
-
-                match index {
-                    1..=OPTION_REPO_NUM => return self.set_by_url(&repo_selections[index - 1]),
-                    _ => eprintln!(
-                        "Invalid input: the number should not be more than {}",
-                        OPTION_REPO_NUM
-                    ),
-                }
-            } else {
-                die!("An error occured in constructing url in searching.");
-            }
+        use terminal_menu::{button, label, menu, mut_menu, run};
+        let items = self.search().die("An error occurs in searching repos.");
+        assert!(!items.is_empty(), "No repos found.");
+        if quiet {
+            return self.set_by_url(items[0].as_str());
         }
+        let mut menu_items = vec![label(
+            "Please select the repo you want to install:"
+                .bold()
+                .to_string(),
+        )];
+        menu_items.reserve(items.len());
+        items
+            .into_iter()
+            .map(button)
+            .for_each(|x| menu_items.push(x));
+        let select_menu = menu(menu_items);
+        run(&select_menu);
+        let temp = mut_menu(&select_menu);
+        let selected = temp.selected_item_name();
+        info!("selected repo: {}", selected);
+        self.set_by_url(selected)
     }
 
     pub fn get_asset(&mut self) -> Option<&mut Self> {
-        debug_assert!(self.repo_owner.is_some() && self.repo_name.is_some());
+        assert!(self.repo_owner.is_some() && self.repo_name.is_some());
         let api = self
             .api_base()
             .join_all_str([
                 "repos",
                 self.repo_owner.as_deref().unwrap(),
                 self.repo_name.as_deref().unwrap(),
+                "releases",
                 "latest",
             ])
             .expect("Invalid path.");
-        info!("Get assets from API: {}", api);
+        debug!("Get assets from API: {}", api);
         match reqwest::blocking::get(api) {
             Ok(response) if response.status().is_success() => {
-                let releases: Vec<serde_json::Value> = response.json().unwrap();
-                if releases.is_empty() {
+                let releases: serde_json::Value = response
+                    .json()
+                    .die("Assets API response is not a valid json");
+
+                self.version = Some(
+                    releases["tag_name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                );
+
+                let raw_assets = releases["assets"]
+                    .as_array()
+                    .die("Assets API response has no array named `assets`");
+                if raw_assets.is_empty() {
                     die!(
                         "No releases found for {}/{}",
                         self.repo_owner.as_ref().unwrap(),
                         self.repo_name.as_ref().unwrap()
                     );
                 }
-                let release = &releases[0];
-                self.version = Some(release["tag_name"].as_str().unwrap_or_default().to_string());
-                let raw_assets = release["assets"].as_array().unwrap();
 
                 let mut assets: Vec<String> = raw_assets
                     .iter()
@@ -278,9 +281,7 @@ impl RepoHandler {
                 #[cfg(windows)]
                 if !self.name.to_lowercase().contains("win") {
                     assets.retain(|asset| asset.to_lowercase().contains("win"));
-                    if assets.is_empty() {
-                        die!(MyError::NoAvailableAsset);
-                    }
+                    assert!(!assets.is_empty(), "{}", MyError::NoAvailableAsset);
                 }
 
                 // Select architecture
@@ -311,15 +312,15 @@ impl RepoHandler {
 
                 if let Some(selected_asset) = assets.first() {
                     self.asset = Some(selected_asset.to_string());
-                    eprintln!("Selected asset: {}", selected_asset);
+                    eprintln!("Selected asset: {selected_asset}");
                     Some(self)
                 } else {
-                    die!(MyError::NoAvailableAsset);
+                    die!("{}", MyError::NoAvailableAsset);
                 }
             }
             Ok(response) => {
                 die!(
-                    "Unexpected response status:{} from the releases API",
+                    "Unexpected response status: {} from the releases API",
                     response.status()
                 );
             }
@@ -346,13 +347,6 @@ impl RepoHandler {
         } else {
             None
         }
-    }
-
-    pub fn read_input(&self, prompt: &str) -> Result<String, std::io::Error> {
-        eprint!("{}", prompt);
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        Ok(input.trim().to_string())
     }
 }
 
@@ -397,10 +391,7 @@ mod tests {
     #[test]
     fn test_set_by_url() {
         let repo = RepoHandler::default().set_by_url("https://github.com/lxl66566/bpm-rs/");
-        assert_eq!(
-            repo.clone().url().as_str().trim_matches('/'),
-            "https://github.com/lxl66566/bpm-rs"
-        );
+        assert_eq!(repo.url().as_str(), "https://github.com/lxl66566/bpm-rs");
         assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
         assert_eq!(repo.repo_owner.unwrap(), "lxl66566");
     }

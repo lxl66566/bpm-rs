@@ -1,4 +1,3 @@
-pub mod constants;
 pub mod err;
 pub mod filter;
 

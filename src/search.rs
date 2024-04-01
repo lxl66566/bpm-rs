@@ -1,5 +1,5 @@
-use crate::utils::constants::OPTION_REPO_NUM;
 use crate::utils::err::MyError;
+use crate::utils::filter::{select_list, sort_list, Combination};
 use crate::utils::{fmt_repo_list, UrlJoinAll};
 use crate::CLI;
 use anyhow::Result;
@@ -7,14 +7,21 @@ use assert2::assert;
 use colored::Colorize;
 use die_exit::{die, Die, DieWith};
 use log::{debug, error, info, trace, warn};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::env::consts::{ARCH, OS};
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use url::Url;
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+static REQUEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
+    reqwest::blocking::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .build()
+        .die("An error occured in building request client.")
+});
 
 #[non_exhaustive]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
@@ -164,12 +171,8 @@ impl RepoHandler {
             ],
         )
         .expect("This construct should be ok.");
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(APP_USER_AGENT)
-            .build()?;
-        debug!("build with APP_USER_AGENT: {APP_USER_AGENT}");
         info!("search url: {}", &url);
-        let response = client.get(url).send();
+        let response = REQUEST_CLIENT.get(url).send();
         match response {
             Ok(r) if r.status().is_success() => {
                 let data: serde_json::Value = r.json().unwrap();
@@ -221,7 +224,7 @@ impl RepoHandler {
         self.set_by_url(selected)
     }
 
-    pub fn get_asset(&mut self) -> Option<&mut Self> {
+    pub fn get_asset(&mut self) -> &mut Self {
         assert!(self.repo_owner.is_some() && self.repo_name.is_some());
         let api = self
             .api_base()
@@ -234,7 +237,7 @@ impl RepoHandler {
             ])
             .expect("Invalid path.");
         debug!("Get assets from API: {}", api);
-        match reqwest::blocking::get(api) {
+        match REQUEST_CLIENT.get(api).send() {
             Ok(response) if response.status().is_success() => {
                 let releases: serde_json::Value = response
                     .json()
@@ -313,7 +316,7 @@ impl RepoHandler {
                 if let Some(selected_asset) = assets.first() {
                     self.asset = Some(selected_asset.to_string());
                     eprintln!("Selected asset: {selected_asset}");
-                    Some(self)
+                    self
                 } else {
                     die!("{}", MyError::NoAvailableAsset);
                 }
@@ -334,19 +337,14 @@ impl RepoHandler {
     /// new_version)` if has update.
     pub fn update_asset(&mut self) -> Option<(String, String)> {
         let old_version = self.version.clone().unwrap();
-        if self.get_asset().is_some() {
-            if let Some(new_version) = self.version.clone() {
-                if &old_version == &new_version {
-                    None
-                } else {
-                    Some((old_version, new_version))
-                }
-            } else {
+        self.get_asset();
+        self.version.clone().and_then(|new_version| {
+            if old_version == new_version {
                 None
+            } else {
+                Some((old_version, new_version))
             }
-        } else {
-            None
-        }
+        })
     }
 }
 

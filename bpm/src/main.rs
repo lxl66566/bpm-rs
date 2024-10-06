@@ -4,26 +4,27 @@
     clippy::clone_on_ref_ptr,
     clippy::print_stderr,
     clippy::print_stdout,
-    clippy::missing_docs_in_private_items
+    clippy::missing_docs_in_private_items,
+    clippy::struct_field_names
 )]
 
 mod cli;
+mod config;
 mod search;
+mod storage;
 mod utils;
 
-use anyhow::anyhow;
 use anyhow::Result;
 use clap::Parser;
 use cli::Cli;
-use colored::*;
-use once_cell::sync::Lazy;
-use search::RepoHandler;
-use url::Url;
+use search::Searchable;
+use std::sync::LazyLock as Lazy;
+use storage::Repo;
 
-static CLI: Lazy<Cli> = Lazy::new(|| Cli::parse());
+static CLI: Lazy<Cli> = Lazy::new(Cli::parse);
 
 fn main() -> Result<()> {
     env_logger::init();
-    RepoHandler::new("eza".into()).ask(false).get_asset();
+    Repo::new("eza").ask(false).get_asset();
     Ok(())
 }

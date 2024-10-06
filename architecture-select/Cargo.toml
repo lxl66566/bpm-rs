@@ -1,4 +1,14 @@
 [package]
 name = "architecture-select"
+description = "Select the best match item based on platform and architecture. Used for github assets selection."
 version = "0.1.0"
 edition = "2021"
+authors = ["Absolutex <lxl66566@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/lxl66566/bpm-rs/"
+homepage = "https://github.com/lxl66566/bpm-rs/tree/main/architecture-select"
+readme = "README.md"
+keywords = ["architecture", "arch", "select", "select-arch", "system"]
+categories = ["value-formatting"]
+
+[dependencies]

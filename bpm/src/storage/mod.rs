@@ -160,10 +160,11 @@ impl Repo {
     }
 
     /// Set the `repo_name` and `repo_owner` by fullname.
-    /// For example, with the full name `me/myrepo`, the `repo_owner` would be
-    /// `me`, and the `repo_name` would be `myrepo`.
-    #[allow(clippy::unwrap_used)]
-    pub fn set_by_fullname(mut self, full_name: &str) -> Self {
+    ///
+    /// # Example
+    ///
+    /// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the `repo_name` would be `myrepo`.
+    pub fn set_by_fullname(&mut self, full_name: &str) {
         let mut iter = full_name.trim_matches('/').split('/');
         self.repo_owner = Some(
             iter.next()
@@ -181,16 +182,26 @@ impl Repo {
             self.repo_name.as_ref().unwrap(),
             self.repo_owner.as_ref().unwrap()
         );
-        self
     }
 
     /// Set the `repo_name` and `repo_owner` by url.
-    /// For example, with the url `https://github.com/lxl66566/bpm-rs/`, the `repo_owner` would be
-    /// `lxl66566`, and the `repo_name` would be `bpm-rs`.
-    pub fn set_by_url(self, url: &str) -> Self {
+    /// # Example
+    ///
+    /// with the url `https://github.com/lxl66566/bpm-rs/`, the `repo_owner` would be `lxl66566`, and the `repo_name` would be `bpm-rs`.
+    pub fn set_by_url(&mut self, url: &str) {
         let binding = Url::parse(url).expect("parsing invalid URL.");
         let full_name = binding.path();
-        self.set_by_fullname(full_name)
+        self.set_by_fullname(full_name);
+    }
+
+    pub fn by_url(mut self, url: &str) -> Self {
+        self.set_by_url(url);
+        self
+    }
+
+    pub fn by_fullname(mut self, full_name: &str) -> Self {
+        self.set_by_fullname(full_name);
+        self
     }
 }
 
@@ -226,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_set_by_url() {
-        let repo = Repo::new("abc").set_by_url("https://github.com/lxl66566/bpm-rs/");
+        let repo = Repo::new("abc").by_url("https://github.com/lxl66566/bpm-rs/");
         assert_eq!(repo.url().as_str(), "https://github.com/lxl66566/bpm-rs");
         assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
         assert_eq!(repo.repo_owner.unwrap(), "lxl66566");

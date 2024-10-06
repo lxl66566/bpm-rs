@@ -60,8 +60,8 @@ mod tests {
     fn test_db_basic_operation() -> Result<(), Box<dyn std::error::Error>> {
         let db = Builder::new().create_in_memory(&MODELS)?;
         let rw = db.rw_transaction()?;
-        rw.insert(Repo::new("bpm").set_by_url("https://github.com/lxl66566/bpm-rs/"))?;
-        rw.insert(Repo::new("abd").set_by_url("https://github.com/lxl6656645/b132/"))?;
+        rw.insert(Repo::new("bpm").by_url("https://github.com/lxl66566/bpm-rs/"))?;
+        rw.insert(Repo::new("abd").by_url("https://github.com/lxl6656645/b132/"))?;
         rw.commit()?;
         let all = db.get_repo_list()?;
         assert_eq!(all.0.len(), 2);

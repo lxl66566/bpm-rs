@@ -12,8 +12,8 @@ use crate::{
 };
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-static REQUEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
-    reqwest::blocking::Client::builder()
+static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()
         .die("An error occured in building request client.")
@@ -21,14 +21,14 @@ static REQUEST_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(|| {
 
 /// A trait for searching
 pub trait Searchable {
-    fn search(&self) -> Result<Vec<String>>;
-    fn ask(self, quiet: bool) -> Self;
-    fn get_asset(&mut self) -> &mut Self;
-    fn update_asset(&mut self) -> Option<(String, String)>;
+    async fn search(&self) -> Result<Vec<String>>;
+    fn ask(&mut self, items: Vec<String>, quiet: bool);
+    async fn get_asset(&mut self) -> &mut Self;
+    async fn update_asset(&mut self) -> Option<(String, String)>;
 }
 
 impl Searchable for Repo {
-    fn search(&self) -> Result<Vec<String>> {
+    async fn search(&self) -> Result<Vec<String>> {
         // Search API: https://docs.github.com/zh/rest/search/search?apiVersion=2022-11-28#search-repositories
         let url = Url::parse_with_params(
             self.site
@@ -43,10 +43,10 @@ impl Searchable for Repo {
         )
         .expect("This construct should be ok.");
         debug!("search url: {}", &url);
-        let response = REQUEST_CLIENT.get(url).send();
+        let response = REQUEST_CLIENT.get(url).send().await;
         match response {
             Ok(r) if r.status().is_success() => {
-                let data: serde_json::Value = r.json().unwrap();
+                let data: serde_json::Value = r.json().await.unwrap();
                 data["items"].as_array().map_or_else(
                     || {
                         die!("No items found in the response");
@@ -69,13 +69,12 @@ impl Searchable for Repo {
         }
     }
 
-    #[allow(clippy::significant_drop_tightening)]
-    fn ask(self, quiet: bool) -> Self {
+    fn ask(&mut self, items: Vec<String>, quiet: bool) {
         use terminal_menu::{button, label, menu, mut_menu, run};
-        let items = self.search().die("An error occurs in searching repos.");
         assert!(!items.is_empty(), "No repos found.");
         if quiet {
-            return self.set_by_url(items[0].as_str());
+            self.set_by_url(items[0].as_str());
+            return;
         }
         let mut menu_items = vec![label(
             "Please select the repo you want to install:"
@@ -92,10 +91,10 @@ impl Searchable for Repo {
         let temp = mut_menu(&select_menu);
         let selected = temp.selected_item_name();
         info!("selected repo: {}", selected);
-        self.set_by_url(selected)
+        self.set_by_url(selected);
     }
 
-    fn get_asset(&mut self) -> &mut Self {
+    async fn get_asset(&mut self) -> &mut Self {
         assert!(self.repo_owner.is_some() && self.repo_name.is_some());
         let api = self
             .site
@@ -109,10 +108,11 @@ impl Searchable for Repo {
             ])
             .expect("Invalid path.");
         debug!("Get assets from API: {}", api);
-        match REQUEST_CLIENT.get(api).send() {
+        match REQUEST_CLIENT.get(api).send().await {
             Ok(response) if response.status().is_success() => {
                 let releases: serde_json::Value = response
                     .json()
+                    .await
                     .die("Assets API response is not a valid json");
 
                 self.version = Some(
@@ -162,9 +162,9 @@ impl Searchable for Repo {
 
     ///  update assets list. Returns `None` if has no update, `(old_version,
     /// new_version)` if has update.
-    fn update_asset(&mut self) -> Option<(String, String)> {
+    async fn update_asset(&mut self) -> Option<(String, String)> {
         let old_version = self.version.clone().unwrap();
-        self.get_asset();
+        self.get_asset().await;
         self.version.clone().and_then(|new_version| {
             if old_version == new_version {
                 None

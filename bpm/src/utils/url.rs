@@ -45,6 +45,19 @@ impl<'a> UrlJoinAll<'a> for Url {
     }
 }
 
+/// Other url operations
+pub trait UrlOps {
+    fn extension(&self) -> Option<&str>;
+}
+
+impl UrlOps for Url {
+    fn extension(&self) -> Option<&str> {
+        Path::new(self.path())
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

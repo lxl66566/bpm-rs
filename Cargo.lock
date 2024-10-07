@@ -204,6 +204,7 @@ dependencies = [
  "die-exit",
  "generator",
  "home",
+ "libc",
  "log",
  "mslnk",
  "native_db",

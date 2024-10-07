@@ -93,6 +93,78 @@ fn check_and_install_msi(src: impl AsRef<Path>) -> std::io::Result<bool> {
     Ok(false)
 }
 
+/// Install a file to a dir, with the given mode, keep the file name unchanged.
+#[cfg(unix)]
+fn install_to_dir_with_mode(src: impl AsRef<Path>, dst: impl AsRef<Path>, mode: u32) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::copy(
+        &src,
+        &dst.as_ref()
+            .join(src.as_ref().file_name().expect("No file name")),
+    )?;
+    let permissions = fs::Permissions::from_mode(mode);
+    fs::set_permissions(&dst, permissions)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+pub mod unixpath {
+    use std::path::PathBuf;
+
+    use home::home_dir;
+
+    static IS_ROOT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    #[inline]
+    fn is_root() -> bool {
+        *IS_ROOT.get_or_init(|| unsafe { libc::getuid() } == 0)
+    }
+
+    #[inline]
+    pub fn root() -> PathBuf {
+        if is_root() {
+            PathBuf::from("/usr")
+        } else {
+            home_dir()
+                .expect("Failed to get home directory.")
+                .join(".local")
+        }
+    }
+
+    #[inline]
+    pub fn bin() -> PathBuf {
+        root().join("bin")
+    }
+
+    #[inline]
+    pub fn lib() -> PathBuf {
+        root().join("lib")
+    }
+
+    #[inline]
+    pub fn share() -> PathBuf {
+        root().join("share")
+    }
+
+    #[inline]
+    pub fn include() -> PathBuf {
+        root().join("include")
+    }
+
+    #[inline]
+    pub fn services() -> PathBuf {
+        if is_root() {
+            PathBuf::from("/etc/systemd/system")
+        } else {
+            home_dir()
+                .expect("Failed to get home directory.")
+                .join(".config")
+                .join("systemd")
+                .join("user")
+        }
+    }
+}
+
 pub trait Installation {
     fn install(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()>;
     fn uninstall(&mut self, config: &Config<'_>) -> Result<()>;
@@ -241,6 +313,16 @@ fi"#,
             temp
         );
         Ok(())
+    }
+}
+
+#[cfg(unix)]
+impl Installation for Repo {
+    fn install(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()> {
+        todo!()
+    }
+    fn uninstall(&mut self, config: &Config<'_>) -> Result<()> {
+        todo!()
     }
 }
 

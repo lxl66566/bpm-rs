@@ -38,23 +38,22 @@ fn move_files_recursively<F>(src_dir: &Path, dst_dir: &Path, f: &mut F) -> Resul
 where
     F: FnMut(&Path, &Path) -> Result<()>,
 {
-    if !dst_dir.exists() {
-        fs::create_dir_all(dst_dir)?;
-    }
+    dst_dir.create_dir_if_not_exist()?;
     for entry in fs::read_dir(src_dir)? {
         let entry = entry?;
         let src_path = entry.path();
         let file_name = entry.file_name();
         let dst_path = dst_dir.join(file_name);
         if src_path.is_dir() {
+            dst_path.create_dir_if_not_exist()?;
             move_files_recursively(&src_path, &dst_path, f)?;
-            if *DRY_RUN.read().unwrap() {
+            if !*DRY_RUN.read().unwrap() {
                 fs::remove_dir(&src_path)?;
             }
             info!("Moving dir : {:?} -> {:?}", src_path, dst_path);
             f(&src_path, &dst_path)?;
         } else if src_path.is_file() {
-            if *DRY_RUN.read().unwrap() {
+            if !*DRY_RUN.read().unwrap() {
                 fs::rename(&src_path, &dst_path)?;
             }
             info!("Moving file: {:?} -> {:?}", src_path, dst_path);
@@ -255,6 +254,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::utils::log_init;
 
     #[test]
     fn test_only_one_file_in_dir() -> Result<()> {
@@ -271,25 +271,24 @@ mod tests {
 
     #[test]
     fn test_move_files_recursively() -> Result<()> {
+        log_init();
+
         // 创建一个临时目录作为源目录
         let src_dir = tempdir()?;
         let src_path = src_dir.path();
 
         // 在源目录中创建文件和文件夹
         let file1_path = src_path.join("file1.txt");
-        let mut file1 = File::create(&file1_path)?;
-        writeln!(file1, "This is file 1")?;
+        File::create(&file1_path)?;
 
         let file2_path = src_path.join("file2.txt");
-        let mut file2 = File::create(&file2_path)?;
-        writeln!(file2, "This is file 2")?;
+        File::create(&file2_path)?;
 
         let subdir_path = src_path.join("subdir");
         fs::create_dir(&subdir_path)?;
 
         let subfile1_path = subdir_path.join("subfile1.txt");
-        let mut subfile1 = File::create(&subfile1_path)?;
-        writeln!(subfile1, "This is subfile 1")?;
+        File::create(&subfile1_path)?;
 
         // 创建一个临时目录作为目标目录
         let dst_dir = tempdir()?;

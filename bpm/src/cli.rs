@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::RwLock};
 
 use clap::{ArgAction, Parser};
+
+pub static DRY_RUN: RwLock<bool> = RwLock::new(false);
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None, after_help = r#"Examples:
@@ -9,7 +11,8 @@ urldecoder *.md -e my   # decode all markdown files in current folder except whi
 urldecoder *            # decode all files in current folder
 "#)]
 pub struct Cli {
-    /// Files to convert. It uses glob("**/{file}") to glob given pattern, like python's `rglob`
+    /// Files to convert. It uses glob("**/{file}") to glob given pattern, like
+    /// python's `rglob`
     file: PathBuf,
     /// Show result only without overwrite
     #[arg(short, long)]

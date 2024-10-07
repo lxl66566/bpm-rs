@@ -1,12 +1,13 @@
 use std::path::Path;
 
+use anyhow::anyhow;
 use native_db::{Builder, Database, Models};
 
 use super::{Repo, RepoList};
 
 type Result<T, E = native_db::db_type::Error> = std::result::Result<T, E>;
 
-pub(crate) trait DbInit {
+pub trait DbInit {
     fn create_or_open<'a>(
         &self,
         models: &'a Models,
@@ -28,9 +29,11 @@ impl DbInit for Builder {
     }
 }
 
-pub(crate) trait DbOperation {
+pub trait DbOperation {
     fn get_repo_list(&self) -> Result<RepoList>;
     fn get_repo(&self, name: &str) -> Result<Option<Repo>>;
+    fn insert_repo(&self, repo: Repo) -> Result<()>;
+    fn remove_repo(&self, name: &str) -> anyhow::Result<()>;
 }
 
 impl DbOperation for Database<'_> {
@@ -48,13 +51,31 @@ impl DbOperation for Database<'_> {
     fn get_repo(&self, name: &str) -> Result<Option<Repo>> {
         self.r_transaction()?.get().primary(name)
     }
+
+    fn insert_repo(&self, repo: Repo) -> Result<()> {
+        let rw = self.rw_transaction()?;
+        rw.insert(repo)?;
+        rw.commit()?;
+        Ok(())
+    }
+
+    fn remove_repo(&self, name: &str) -> anyhow::Result<()> {
+        let repo = self
+            .get_repo(name)?
+            .ok_or_else(|| anyhow!("repo not found"))?;
+        let rw = self.rw_transaction()?;
+        rw.remove(repo)?;
+        rw.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use native_db::Builder;
+
     use super::*;
     use crate::storage::{Repo, MODELS};
-    use native_db::Builder;
 
     #[test]
     fn test_db_basic_operation() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,16 +1,15 @@
-mod db;
+pub mod db;
 
 use std::{cmp::Ordering, fmt, path::PathBuf, sync::LazyLock as Lazy};
 
-use crate::utils::table::Table;
-use crate::utils::UrlJoinAll;
-use die_exit::die;
-use die_exit::DieWith;
+use die_exit::{die, DieWith};
 use log::debug;
 use native_db::{native_db, Models, ToKey};
 use native_model::{native_model, Model};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+use crate::utils::{table::Table, UrlJoinAll};
 
 pub static MODELS: Lazy<Models> = Lazy::new(|| {
     let mut models = Models::new();
@@ -49,6 +48,7 @@ impl fmt::Display for Site {
     }
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[native_model(id = 1, version = 1)]
 #[native_db]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -65,6 +65,8 @@ pub struct Repo {
     pub prefer_gnu: bool,
     pub no_pre: bool,
     pub one_bin: bool,
+    #[cfg(windows)]
+    pub is_msi: bool,
 }
 
 impl Ord for Repo {
@@ -81,7 +83,7 @@ impl PartialOrd for Repo {
 
 impl fmt::Display for Repo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let table = Table::default().add(self);
+        let table = Table::default().with_repo(self);
         write!(f, "{table}")
     }
 }
@@ -112,6 +114,8 @@ impl Repo {
             prefer_gnu: false,
             no_pre: false,
             one_bin: false,
+            #[cfg(windows)]
+            is_msi: false,
         }
     }
 
@@ -163,7 +167,8 @@ impl Repo {
     ///
     /// # Example
     ///
-    /// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the `repo_name` would be `myrepo`.
+    /// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the
+    /// `repo_name` would be `myrepo`.
     pub fn set_by_fullname(&mut self, full_name: &str) {
         let mut iter = full_name.trim_matches('/').split('/');
         self.repo_owner = Some(
@@ -176,7 +181,7 @@ impl Repo {
                 .unwrap_or_else(|| die!("An error occurs in parsing full name 2nd part"))
                 .to_string(),
         );
-        debug_assert!(iter.next().is_none(), "fullname has more than 2 parts");
+        debug_assert!(iter.count() == 0, "fullname has more than 2 parts");
         debug!(
             "set repo_name: {}, repo_owner: {}",
             self.repo_name.as_ref().unwrap(),
@@ -231,7 +236,6 @@ impl fmt::Display for RepoList {
 
 #[cfg(test)]
 mod tests {
-    use native_db::Builder;
 
     use super::*;
 

@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use log::warn;
-use serde_json::to_string;
 use tap::Tap;
 use trauma::{download::Download, downloader::DownloaderBuilder};
 use url::Url;
@@ -61,10 +60,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_download() {
+        let tempdir = tempfile::tempdir().unwrap();
         let mut repo = Repo::new("reqwest_test");
         repo.asset =
             Some("https://github.com/seanmonstar/reqwest/archive/refs/tags/v0.1.0.zip".to_string());
-        let _ = download(vec![&repo], "test").await;
-        assert!(Path::new("test/reqwest_test.zip").exists());
+        let _ = download(vec![&repo], &tempdir.path()).await;
+        assert!(tempdir.path().join("reqwest_test.zip").exists());
     }
 }

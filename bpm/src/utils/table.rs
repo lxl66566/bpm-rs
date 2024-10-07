@@ -2,11 +2,11 @@
 
 use std::fmt;
 
-use comfy_table::presets::UTF8_FULL;
-use comfy_table::TableComponent::{
-    BottomLeftCorner, BottomRightCorner, TopLeftCorner, TopRightCorner,
+use comfy_table::{
+    presets::UTF8_FULL,
+    Attribute, Cell, Color,
+    TableComponent::{BottomLeftCorner, BottomRightCorner, TopLeftCorner, TopRightCorner},
 };
-use comfy_table::{Attribute, Cell, Color};
 
 use crate::storage::Repo;
 
@@ -28,7 +28,8 @@ impl Default for Table {
 }
 
 impl Table {
-    pub fn add(mut self, repo: &Repo) -> Self {
+    #[must_use]
+    pub fn with_repo(mut self, repo: &Repo) -> Self {
         self.add_row(repo);
         self
     }

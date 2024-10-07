@@ -1,9 +1,10 @@
+use std::sync::LazyLock as Lazy;
+
 use anyhow::Result;
 use assert2::assert;
 use colored::Colorize;
 use die_exit::{die, Die};
 use log::{debug, info};
-use std::sync::LazyLock as Lazy;
 use url::Url;
 
 use crate::{
@@ -69,6 +70,7 @@ impl Searchable for Repo {
         }
     }
 
+    #[allow(clippy::significant_drop_tightening)]
     fn ask(&mut self, items: Vec<String>, quiet: bool) {
         use terminal_menu::{button, label, menu, mut_menu, run};
         assert!(!items.is_empty(), "No repos found.");
@@ -176,6 +178,4 @@ impl Searchable for Repo {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::storage::Repo;
-}
+mod tests {}

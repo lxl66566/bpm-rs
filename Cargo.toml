@@ -1,3 +1,9 @@
 [workspace]
-members  = ["bpm", "architecture-select"]
+members = ["bpm", "architecture-select"]
 resolver = "2"
+
+[profile.release]
+strip = true
+lto = true
+panic = "abort"
+opt-level = "z"

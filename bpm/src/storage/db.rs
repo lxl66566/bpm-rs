@@ -43,7 +43,7 @@ impl DbOperation for Database<'_> {
             .scan()
             .primary()
             .expect("failed to scan people")
-            .all()
+            .all()?
             .collect::<Result<Vec<_>>>()?
             .into())
     }

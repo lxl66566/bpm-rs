@@ -29,7 +29,7 @@ tap                 = "1.0.1"
 tempfile            = "3.13.0"
 terminal-menu       = "3.0.0"
 thiserror           = "1.0.58"
-tokio               = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros"] }
+tokio               = { version = "1.41.0", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = "2.2.5"
 url                 = { version = "2.5.0", features = ["serde"] }
 

@@ -18,7 +18,7 @@ die-exit            = { version = "0.5.0", features = ["red"] }
 generator           = "0.8.3"
 home                = "0.5.9"
 log                 = "0.4.20"
-native_db           = "0.8.0"
+native_db           = "0.8.1"
 native_model        = "0.4.20"
 path-absolutize     = "3.1.1"
 pretty_env_logger   = "0.5.0"

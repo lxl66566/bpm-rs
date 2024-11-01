@@ -1124,9 +1124,9 @@ dependencies = [
 
 [[package]]
 name = "native_db"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dceab55b5540b9f5dd606fed92bfcc16e64ae6b014d88da4daf85c55504ba93"
+checksum = "db7c6b50f9889052a3c1bbd3aa70cc33b76ec1761092aeb0ec0e1ac3cfdb881a"
 dependencies = [
  "native_db_macro",
  "native_model",
@@ -1140,9 +1140,9 @@ dependencies = [
 
 [[package]]
 name = "native_db_macro"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b9202b740fc1978b501649de8276c8be22ba6b3dbd4b6ba96ac47d61ce33860"
+checksum = "434acde56fc4485e0b62533bb2fbc08155ee7e47408b1358348acff556c31b3c"
 dependencies = [
  "proc-macro2",
  "quote",

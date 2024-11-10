@@ -1,21 +1,15 @@
+//! Defines the [`Repo`] structure.
+
 pub mod db;
 
-use std::{cmp::Ordering, fmt, path::PathBuf, sync::LazyLock as Lazy};
+use std::{cmp::Ordering, fmt, path::PathBuf};
 
 use die_exit::{die, DieWith};
 use log::debug;
-use native_db::{native_db, Models, ToKey};
-use native_model::{native_model, Model};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::utils::{table::Table, UrlJoinAll};
-
-pub static MODELS: Lazy<Models> = Lazy::new(|| {
-    let mut models = Models::new();
-    models.define::<Repo>().unwrap();
-    models
-});
 
 #[non_exhaustive]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -49,11 +43,8 @@ impl fmt::Display for Site {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-#[native_model(id = 1, version = 1)]
-#[native_db]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Repo {
-    #[primary_key]
     pub name: String,
     pub bin_name: String,
     pub site: Site,
@@ -62,6 +53,7 @@ pub struct Repo {
     pub asset: Option<String>,
     pub version: Option<String>,
     pub installed_files: Vec<PathBuf>,
+    pub installed_time: Option<std::time::SystemTime>,
     pub prefer_gnu: bool,
     pub no_pre: bool,
     pub one_bin: bool,
@@ -111,6 +103,7 @@ impl Repo {
             asset: None,
             version: None,
             installed_files: Vec::new(),
+            installed_time: None,
             prefer_gnu: false,
             no_pre: false,
             one_bin: false,
@@ -222,6 +215,7 @@ impl Repo {
     derive_more::Deref,
     derive_more::DerefMut,
 )]
+
 pub struct RepoList(Vec<Repo>);
 
 impl fmt::Display for RepoList {

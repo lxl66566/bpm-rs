@@ -7,7 +7,7 @@ use anyhow::Result;
 use compress_tools::{uncompress_archive, Ownership};
 use log::debug;
 
-use crate::{installation::only_one_file_in_dir, utils::path::PathExt};
+use crate::installation::only_one_file_in_dir;
 
 /// unzip the given archive, and remove the archive.
 ///

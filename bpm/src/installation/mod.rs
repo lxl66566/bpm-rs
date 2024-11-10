@@ -166,10 +166,10 @@ pub mod unixpath {
 }
 
 pub trait Installation {
-    fn install(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()>;
-    fn uninstall(&mut self, config: &Config<'_>) -> Result<()>;
+    fn install(&mut self, src: impl AsRef<Path>, config: &Config) -> Result<()>;
+    fn uninstall(&mut self, config: &Config) -> Result<()>;
     #[cfg(windows)]
-    fn create_binary_link(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()>;
+    fn create_binary_link(&mut self, src: impl AsRef<Path>, config: &Config) -> Result<()>;
 }
 
 #[cfg(windows)]
@@ -183,7 +183,7 @@ impl Installation for Repo {
     /// 5. make a bash script for using in windows bash and WSL.
     ///
     /// `path`: The "main path" dir of files to be installed.
-    fn install(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()> {
+    fn install(&mut self, src: impl AsRef<Path>, config: &Config) -> Result<()> {
         if check_and_install_msi(src.as_ref())? {
             if !*DRY_RUN.read().unwrap() {
                 config.db().insert_repo(self.clone())?;
@@ -206,7 +206,7 @@ impl Installation for Repo {
         Ok(())
     }
 
-    fn uninstall(&mut self, config: &Config<'_>) -> Result<()> {
+    fn uninstall(&mut self, config: &Config) -> Result<()> {
         if *DRY_RUN.read().unwrap() {
             for file in &self.installed_files {
                 info!("dry run: Remove file: `{:?}`", file);
@@ -228,7 +228,9 @@ impl Installation for Repo {
 
     /// Create a link for binary files, so that we can call it in cmd, windows
     /// bash and WSL.
-    fn create_binary_link(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()> {
+    ///
+    /// This method will be called by `install` method.
+    fn create_binary_link(&mut self, src: impl AsRef<Path>, config: &Config) -> Result<()> {
         use mslnk::ShellLink;
         use path_absolutize::Absolutize;
 
@@ -318,10 +320,10 @@ fi"#,
 
 #[cfg(unix)]
 impl Installation for Repo {
-    fn install(&mut self, src: impl AsRef<Path>, config: &Config<'_>) -> Result<()> {
+    fn install(&mut self, src: impl AsRef<Path>, config: &Config) -> Result<()> {
         todo!()
     }
-    fn uninstall(&mut self, config: &Config<'_>) -> Result<()> {
+    fn uninstall(&mut self, config: &Config) -> Result<()> {
         todo!()
     }
 }

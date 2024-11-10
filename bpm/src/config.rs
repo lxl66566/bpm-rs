@@ -1,14 +1,13 @@
 use std::{
+    cell::OnceCell,
     path::{Path, PathBuf},
-    sync::{LazyLock as Lazy, OnceLock},
+    sync::LazyLock as Lazy,
 };
 
+use crate::storage::db::{Db, DbOperation};
 use die_exit::{Die, DieWith};
 use home::home_dir;
-use native_db::Database;
 use serde::{Deserialize, Serialize};
-
-use crate::storage::{db::DbInit, MODELS};
 
 pub static CONFIG_POSITION: Lazy<PathBuf> = Lazy::new(|| {
     home_dir()
@@ -18,37 +17,34 @@ pub static CONFIG_POSITION: Lazy<PathBuf> = Lazy::new(|| {
 });
 
 #[derive(Serialize, Deserialize)]
-pub struct Config<'a> {
+pub struct Config {
     pub install_position: PathBuf,
     pub cache_position: PathBuf,
-    pub db_position: PathBuf,
+    pub db_path: PathBuf,
     #[serde(skip)]
-    db: OnceLock<Database<'a>>,
+    db: OnceCell<Db>,
 }
 
-impl Default for Config<'_> {
+impl Default for Config {
     fn default() -> Self {
         Self {
             install_position: home_dir().die("Failed to get home directory.").join(".bpm"),
             cache_position: std::env::temp_dir().join(".bpm"),
-            db_position: CONFIG_POSITION.join("db"),
-            db: OnceLock::new(),
+            db_path: CONFIG_POSITION.join("db"),
+            db: OnceCell::new(),
         }
     }
 }
 
-impl Config<'_> {
-    pub fn db(&self) -> &Database<'_> {
+impl Config {
+    pub fn db(&self) -> &Db {
         self.db.get_or_init(|| {
-            let db = native_db::Builder::new()
-                .create_or_open(&MODELS, &self.db_position)
-                .die_with(|e| {
-                    format!(
-                        "Failed to create or open database in {} : {e}",
-                        self.db_position.display()
-                    )
-                });
-            db
+            Db::create_or_open(&self.db_path).die_with(|e| {
+                format!(
+                    "Failed to create or open database in {} : {e}",
+                    self.db_path.display()
+                )
+            })
         })
     }
     #[inline]

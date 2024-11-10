@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-
 pub trait PathExt {
     fn glob_name(&self, pattern: &str) -> Vec<PathBuf>;
     /// create dir if not exist
@@ -25,6 +24,9 @@ pub trait PathExt {
 }
 
 impl<P: AsRef<Path>> PathExt for P {
+    /// Find all files with the given name in the given directory recursively.
+    ///
+    /// The pattern should be only filename, and should not contains `*` or `?` or other wildcard characters.
     fn glob_name(&self, pattern: &str) -> Vec<PathBuf> {
         let mut results = Vec::new();
         find_files_by_name_inner(self.as_ref(), pattern, &mut results);
@@ -61,6 +63,17 @@ impl<P: AsRef<Path>> PathExt for P {
     }
 }
 
+/// Find all files with the given name in the given directory recursively.
+///
+/// # Arguments
+///
+/// - `dir`: the directory to search in
+/// - `file_name`: the name of the file to search for
+/// - `results`: the vector to add the found files to
+///
+/// # Errors
+///
+/// - Propagates I/O errors from `fs::read_dir`
 fn find_files_by_name_inner(dir: &Path, file_name: &str, results: &mut Vec<PathBuf>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {

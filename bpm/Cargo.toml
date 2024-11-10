@@ -13,13 +13,12 @@ clap                = { version = "4.5.20", features = ["derive"] }
 colored             = "2.1.0"
 comfy-table         = "7.1.1"
 compress-tools      = "0.15.1"
+config-file2        = { version = "0.3.2", features = ["all"] }
 derive_more         = { version = "1.0.0", features = ["deref", "deref_mut", "from"] }
 die-exit            = { version = "0.5.0", features = ["red"] }
 generator           = "0.8.3"
 home                = "0.5.9"
 log                 = "0.4.20"
-native_db           = "0.8.1"
-native_model        = "0.4.20"
 path-absolutize     = "3.1.1"
 pretty_env_logger   = "0.5.0"
 reqwest             = { version = "0.12.8", features = ["json"] }
@@ -28,7 +27,7 @@ serde_json          = "1.0.132"
 tap                 = "1.0.1"
 tempfile            = "3.13.0"
 terminal-menu       = "3.0.0"
-thiserror           = "1.0.58"
+thiserror           = "2.0.1"
 tokio               = { version = "1.41.0", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = "2.2.5"
 url                 = { version = "2.5.0", features = ["serde"] }

@@ -34,12 +34,15 @@ impl Table {
         self
     }
 
+    /// # Panics
+    ///
+    /// This function will panic if the url of repo is not set or invalid.
     pub fn add_row(&mut self, repo: &Repo) {
         self.0.add_row(vec![
             Cell::new(repo.name.clone())
                 .add_attribute(Attribute::Bold)
                 .fg(Color::Green),
-            Cell::new(repo.url().to_string()),
+            Cell::new(repo.url().expect("url should be valid").to_string()),
             Cell::new(repo.version.clone().unwrap_or_default()),
         ]);
     }

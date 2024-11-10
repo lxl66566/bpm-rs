@@ -213,10 +213,10 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "strum_macros",
  "tap",
  "tempfile",
  "terminal-menu",
- "thiserror 2.0.1",
  "tokio",
  "trauma",
  "url",
@@ -359,7 +359,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
- "thiserror 1.0.64",
+ "thiserror",
  "toml",
 ]
 
@@ -1191,7 +1191,7 @@ dependencies = [
  "js-sys",
  "once_cell",
  "pin-project-lite",
- "thiserror 1.0.64",
+ "thiserror",
  "urlencoding",
 ]
 
@@ -1206,7 +1206,7 @@ dependencies = [
  "js-sys",
  "once_cell",
  "pin-project-lite",
- "thiserror 1.0.64",
+ "thiserror",
 ]
 
 [[package]]
@@ -1226,7 +1226,7 @@ dependencies = [
  "ordered-float",
  "percent-encoding",
  "rand",
- "thiserror 1.0.64",
+ "thiserror",
 ]
 
 [[package]]
@@ -1246,7 +1246,7 @@ dependencies = [
  "ordered-float",
  "percent-encoding",
  "rand",
- "thiserror 1.0.64",
+ "thiserror",
 ]
 
 [[package]]
@@ -1541,7 +1541,7 @@ dependencies = [
  "http",
  "reqwest",
  "serde",
- "thiserror 1.0.64",
+ "thiserror",
  "tower-service",
 ]
 
@@ -2017,16 +2017,7 @@ version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d50af8abc119fb8bb6dbabcfa89656f46f84aa0ac7688088608076ad2b459a84"
 dependencies = [
- "thiserror-impl 1.0.64",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07c1e40dd48a282ae8edc36c732cbc219144b87fb6a4c7316d611c6b1f06ec0c"
-dependencies = [
- "thiserror-impl 2.0.1",
+ "thiserror-impl",
 ]
 
 [[package]]
@@ -2034,17 +2025,6 @@ name = "thiserror-impl"
 version = "1.0.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08904e7672f5eb876eaaf87e0ce17857500934f4981c4a0ab2b4aa98baac7fc3"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "874aa7e446f1da8d9c3a5c95b1c5eb41d800045252121dc7f8e0ba370cee55f5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2132,7 +2112,7 @@ checksum = "0d4770b8024672c1101b3f6733eab95b18007dbe0847a8afe341fcf79e06043f"
 dependencies = [
  "either",
  "futures-util",
- "thiserror 1.0.64",
+ "thiserror",
  "tokio",
 ]
 
@@ -2296,7 +2276,7 @@ dependencies = [
  "reqwest-retry",
  "reqwest-tracing",
  "task-local-extensions",
- "thiserror 1.0.64",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-opentelemetry 0.24.0",

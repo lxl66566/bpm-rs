@@ -4,12 +4,14 @@ use anyhow::Result;
 use assert2::assert;
 use colored::Colorize;
 use die_exit::{die, Die};
-use log::{debug, info};
+use log::{debug, info, warn};
+use tokio::sync::mpsc;
 use url::Url;
 
 use crate::{
-    storage::Repo,
-    utils::{err::MyError, UrlJoinAll},
+    cli::SortParam,
+    storage::{Repo, RepoList},
+    utils::UrlJoinAll,
 };
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -22,15 +24,21 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 
 /// A trait for searching
 pub trait Searchable {
-    async fn search(&self) -> Result<Vec<String>>;
+    async fn search(&self, sort: SortParam) -> Result<Vec<String>>;
     fn ask(&mut self, items: Vec<String>, quiet: bool);
     async fn get_asset(&mut self) -> &mut Self;
     async fn update_asset(&mut self) -> Option<(String, String)>;
 }
 
 impl Searchable for Repo {
-    async fn search(&self) -> Result<Vec<String>> {
+    async fn search(&self, sort: SortParam) -> Result<Vec<String>> {
         // Search API: https://docs.github.com/zh/rest/search/search?apiVersion=2022-11-28#search-repositories
+        if self.url().is_some() {
+            debug!(
+                "Repo `{}`'s url already exists. Skipping search.",
+                self.name
+            );
+        }
         let url = Url::parse_with_params(
             self.site
                 .api_base()
@@ -40,6 +48,7 @@ impl Searchable for Repo {
             &[
                 ("q", format!("{} in:name", self.name).as_str()),
                 ("page", "1"),
+                ("sort", sort.as_ref()),
             ],
         )
         .expect("This construct should be ok.");
@@ -147,7 +156,7 @@ impl Searchable for Repo {
                     eprintln!("Selected asset: {selected_asset}");
                     self
                 } else {
-                    die!("{}", MyError::NoAvailableAsset);
+                    die!("No available asset found in this repo. If you're sure there's a valid asset, use `--interactive`.");
                 }
             }
             Ok(response) => {
@@ -174,6 +183,26 @@ impl Searchable for Repo {
                 Some((old_version, new_version))
             }
         })
+    }
+}
+
+pub trait SearchableSequence {
+    async fn pre_install(self, quiet: bool, interactive: bool, sort: SortParam) -> Self;
+}
+
+impl SearchableSequence for RepoList {
+    async fn pre_install(self, quiet: bool, interactive: bool, sort: SortParam) -> Self {
+        let (tx, mut rx) = mpsc::channel(self.len());
+
+        for repo in self.0.into_iter() {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let search_result = repo.search(sort).await;
+                tx.send((repo, search_result)).await
+            });
+        }
+
+        todo!()
     }
 }
 

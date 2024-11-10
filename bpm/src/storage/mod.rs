@@ -2,14 +2,44 @@
 
 pub mod db;
 
-use std::{cmp::Ordering, fmt, path::PathBuf};
-
-use die_exit::{die, DieWith};
+use crate::utils::{table::Table, UrlJoinAll};
+use anyhow::{anyhow, Result};
+use assert2::assert;
+use die_exit::DieWith;
 use log::debug;
 use serde::{Deserialize, Serialize};
+use std::{
+    cmp::Ordering,
+    fmt,
+    path::{Path, PathBuf},
+};
+use tap::Tap;
 use url::Url;
 
-use crate::utils::{table::Table, UrlJoinAll};
+/// Split a full name into the first and second part.
+///
+/// Returns error if the full name contains not exactly 2 parts.
+///
+/// # Example
+///
+/// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the
+/// `repo_name` would be `myrepo`.
+fn split_full_name(full_name: &str) -> Result<(String, String)> {
+    let mut iter = full_name
+        .trim_matches(|x: char| x == '/' || x.is_ascii_whitespace())
+        .split('/');
+    let res = (
+        iter.next()
+            .ok_or_else(|| anyhow!("1st part of full name is empty"))?
+            .to_string(),
+        iter.next()
+            .ok_or_else(|| anyhow!("2nd part of full name is empty"))?
+            .to_string(),
+    );
+    debug_assert!(iter.count() == 0, "fullname has more than 2 parts");
+
+    Ok(res)
+}
 
 #[non_exhaustive]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -61,6 +91,30 @@ pub struct Repo {
     pub is_msi: bool,
 }
 
+impl Default for Repo {
+    fn default() -> Self {
+        Self {
+            name: "".into(),
+            #[cfg(not(windows))]
+            bin_name: name,
+            #[cfg(windows)]
+            bin_name: "*.exe".into(),
+            site: Site::default(),
+            repo_name: None,
+            repo_owner: None,
+            asset: None,
+            version: None,
+            installed_files: Vec::new(),
+            installed_time: None,
+            prefer_gnu: false,
+            no_pre: false,
+            one_bin: false,
+            #[cfg(windows)]
+            is_msi: false,
+        }
+    }
+}
+
 impl Ord for Repo {
     fn cmp(&self, other: &Self) -> Ordering {
         self.name.cmp(&other.name)
@@ -97,18 +151,7 @@ impl Repo {
             bin_name: name,
             #[cfg(windows)]
             bin_name: "*.exe".into(),
-            site: Site::default(),
-            repo_name: None,
-            repo_owner: None,
-            asset: None,
-            version: None,
-            installed_files: Vec::new(),
-            installed_time: None,
-            prefer_gnu: false,
-            no_pre: false,
-            one_bin: false,
-            #[cfg(windows)]
-            is_msi: false,
+            ..Default::default()
         }
     }
 
@@ -131,18 +174,13 @@ impl Repo {
         self
     }
 
-    pub fn url(&self) -> Url {
-        assert!(
-            self.repo_name.is_some() || self.repo_owner.is_some(),
-            "repo_name and repo_owner must be set"
-        );
-        self.site
-            .base()
-            .join_all_str([
-                self.repo_owner.as_deref().unwrap(),
-                self.repo_name.as_deref().unwrap(),
-            ])
-            .die_with(|e| format!("trying to construct an invalid url. Err: {e}"))
+    pub fn url(&self) -> Option<Url> {
+        Some(
+            self.site
+                .base()
+                .join_all_str([self.repo_owner.as_deref()?, self.repo_name.as_deref()?])
+                .die_with(|e| format!("trying to construct an invalid url. Err: {e}")),
+        )
     }
 
     pub fn dedup_file_list(&mut self) {
@@ -151,9 +189,10 @@ impl Repo {
         debug!("dedup file list success: {:#?}", self.installed_files);
     }
 
-    pub fn add_file_list(&mut self, file: PathBuf) {
-        self.installed_files.push(file.clone());
-        debug!("added file `{}` to file_list", file.display());
+    pub fn add_file_list(&mut self, file: impl AsRef<Path>) {
+        let file = file.as_ref().to_path_buf();
+        debug!("add file `{}` to file_list", file.display());
+        self.installed_files.push(file);
     }
 
     /// Set the `repo_name` and `repo_owner` by fullname.
@@ -162,34 +201,27 @@ impl Repo {
     ///
     /// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the
     /// `repo_name` would be `myrepo`.
-    pub fn set_by_fullname(&mut self, full_name: &str) {
-        let mut iter = full_name.trim_matches('/').split('/');
-        self.repo_owner = Some(
-            iter.next()
-                .unwrap_or_else(|| die!("An error occurs in parsing full name 1st part"))
-                .to_string(),
-        );
-        self.repo_name = Some(
-            iter.next()
-                .unwrap_or_else(|| die!("An error occurs in parsing full name 2nd part"))
-                .to_string(),
-        );
-        debug_assert!(iter.count() == 0, "fullname has more than 2 parts");
-        debug!(
-            "set repo_name: {}, repo_owner: {}",
-            self.repo_name.as_ref().unwrap(),
-            self.repo_owner.as_ref().unwrap()
-        );
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the full name contains not exactly 2 parts.
+    pub fn set_by_fullname(&mut self, full_name: &str) -> Result<()> {
+        let res = split_full_name(full_name)?;
+        debug!("set repo_name: {}, repo_owner: {}", res.1, res.0);
+        self.repo_name = Some(res.1);
+        self.repo_owner = Some(res.0);
+        Ok(())
     }
 
     /// Set the `repo_name` and `repo_owner` by url.
+    ///
     /// # Example
     ///
     /// with the url `https://github.com/lxl66566/bpm-rs/`, the `repo_owner` would be `lxl66566`, and the `repo_name` would be `bpm-rs`.
     pub fn set_by_url(&mut self, url: &str) {
         let binding = Url::parse(url).expect("parsing invalid URL.");
         let full_name = binding.path();
-        self.set_by_fullname(full_name);
+        self.set_by_fullname(full_name).unwrap();
     }
 
     pub fn by_url(mut self, url: &str) -> Self {
@@ -198,8 +230,40 @@ impl Repo {
     }
 
     pub fn by_fullname(mut self, full_name: &str) -> Self {
-        self.set_by_fullname(full_name);
+        self.set_by_fullname(full_name).unwrap();
         self
+    }
+}
+
+impl From<Url> for Repo {
+    /// Construct a repo from a url.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the url is invalid.
+    #[inline]
+    fn from(value: Url) -> Self {
+        let fullname = value.path();
+        let res = split_full_name(fullname).expect("construct repo from invalid URL.");
+        Self::default().tap_mut(|repo| {
+            repo.name = res.1.clone();
+            repo.repo_name = Some(res.1);
+            repo.repo_owner = Some(res.0);
+        })
+    }
+}
+
+impl From<&str> for Repo {
+    /// Construct a repo from a string, could be a url or a name.
+    #[inline]
+    fn from(value: &str) -> Self {
+        let name = value.as_ref();
+        let url = Url::parse(name);
+        if let Ok(url) = url {
+            Self::from(url)
+        } else {
+            Self::new(name)
+        }
     }
 }
 
@@ -216,7 +280,7 @@ impl Repo {
     derive_more::DerefMut,
 )]
 
-pub struct RepoList(Vec<Repo>);
+pub struct RepoList(pub Vec<Repo>);
 
 impl fmt::Display for RepoList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -230,13 +294,15 @@ impl fmt::Display for RepoList {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
     fn test_set_by_url() {
         let repo = Repo::new("abc").by_url("https://github.com/lxl66566/bpm-rs/");
-        assert_eq!(repo.url().as_str(), "https://github.com/lxl66566/bpm-rs");
+        assert_eq!(
+            repo.url().unwrap().as_str(),
+            "https://github.com/lxl66566/bpm-rs"
+        );
         assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
         assert_eq!(repo.repo_owner.unwrap(), "lxl66566");
     }

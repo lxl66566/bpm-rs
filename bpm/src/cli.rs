@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::RwLock};
 
-use clap::{ArgAction, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 
 pub static DRY_RUN: RwLock<bool> = RwLock::new(false);
 
@@ -107,7 +107,8 @@ pub enum SubCommand {
     },
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq, Default)]
+#[derive(ValueEnum, strum_macros::AsRefStr, Clone, Copy, Debug, Eq, PartialEq, Default)]
+#[strum(serialize_all = "kebab-case")]
 pub enum SortParam {
     #[default]
     BestMatch,

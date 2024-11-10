@@ -16,7 +16,7 @@ use crate::{
     utils::path::PathExt,
 };
 
-/// check if the given path contains only one file.
+/// check if the given path contains exactly one file / one dir.
 #[inline]
 pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<PathBuf>> {
     let path = path.as_ref();
@@ -31,7 +31,7 @@ pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<Pa
 }
 
 /// move files from one dir to another dir recursively. the function `f` is
-/// called for each file after moving it.
+/// called for each file *after* moving it.
 ///
 /// the files will be moved before their parent directory.
 fn move_files_recursively<F>(src_dir: &Path, dst_dir: &Path, f: &mut F) -> Result<()>

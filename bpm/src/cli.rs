@@ -17,7 +17,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug, Clone)]
 pub enum SubCommand {
     /// Install packages.
-    #[clap(alias("i"))]
+    #[clap(visible_alias("i"))]
     Install {
         /// The packages to install. You can specify package name or github url.
         #[clap(required = true)]
@@ -67,7 +67,7 @@ pub enum SubCommand {
     },
 
     /// Remove packages.
-    #[clap(alias("r"))]
+    #[clap(visible_alias("r"))]
     Remove {
         /// The packages to remove.
         #[clap(required = true)]
@@ -79,7 +79,7 @@ pub enum SubCommand {
     },
 
     /// Update packages.
-    #[clap(alias("u"))]
+    #[clap(visible_alias("u"))]
     Update {
         /// The packages to update.
         packages: Vec<String>,
@@ -96,11 +96,11 @@ pub enum SubCommand {
 
     /// Alias package executable (Windows only).
     #[cfg(windows)]
-    #[clap(alias("a"))]
+    #[clap(visible_alias("a"))]
     Alias { new_name: String, old_name: String },
 
     /// Show packages info.
-    #[clap(alias("list"), alias("l"))]
+    #[clap(visible_alias("list"), visible_alias("l"))]
     Info {
         /// The packages to info. If empty, show all installed packages.
         packages: Vec<String>,

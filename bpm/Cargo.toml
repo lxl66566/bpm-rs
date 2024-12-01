@@ -30,7 +30,7 @@ tempfile            = "3.13.0"
 terminal-menu       = "3.0.0"
 tokio               = { version = "1.41.0", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = "2.2.5"
-url                 = { version = "2.5.0", features = ["serde"] }
+url                 = { version = "2.5.4", features = ["serde"] }
 
 [target."cfg(windows)".dependencies]
 mslnk       = "0.1.8"

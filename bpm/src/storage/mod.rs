@@ -96,7 +96,7 @@ impl Default for Repo {
         Self {
             name: "".into(),
             #[cfg(not(windows))]
-            bin_name: name,
+            bin_name: "".into(),
             #[cfg(windows)]
             bin_name: "*.exe".into(),
             site: Site::default(),

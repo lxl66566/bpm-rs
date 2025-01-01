@@ -6,7 +6,7 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow              = "1.0.80"
+anyhow              = "1.0.95"
 architecture-select = { path = "../architecture-select" }
 assert2             = "0.3.13"
 clap                = { version = "4.5.20", features = ["derive"] }

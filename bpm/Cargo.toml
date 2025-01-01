@@ -16,7 +16,7 @@ compress-tools      = "0.15.1"
 config-file2        = { version = "0.3.2", features = ["all"] }
 derive_more         = { version = "1.0.0", features = ["deref", "deref_mut", "from"] }
 die-exit            = { version = "0.5.0", features = ["red"] }
-generator           = "0.8.3"
+generator           = "0.8.4"
 home                = "0.5.9"
 log                 = "0.4.20"
 path-absolutize     = "3.1.1"

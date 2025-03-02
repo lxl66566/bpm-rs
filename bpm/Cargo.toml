@@ -37,4 +37,4 @@ mslnk       = "0.1.8"
 windows-env = "0.1.0"
 
 [target."cfg(unix)".dependencies]
-libc = "0.2.167"
+libc = "0.2.170"

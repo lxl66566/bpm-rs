@@ -34,7 +34,7 @@ url                 = { version = "2.5.4", features = ["serde"] }
 
 [target."cfg(windows)".dependencies]
 mslnk       = "0.1.8"
-windows-env = "0.1.0"
+windows-env = "0.2.0"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.167"

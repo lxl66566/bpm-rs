@@ -1,5 +1,5 @@
-mod download;
-mod unzip;
+pub mod download;
+pub mod unzip;
 
 use std::{
     fs,
@@ -12,7 +12,7 @@ use log::{info, warn};
 use crate::{
     cli::DRY_RUN,
     config::Config,
-    storage::{db::DbOperation, Repo},
+    storage::{Repo, db::DbOperation},
     utils::path::PathExt,
 };
 

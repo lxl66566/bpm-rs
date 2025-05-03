@@ -2,8 +2,8 @@
 
 pub mod db;
 
-use crate::utils::{table::Table, UrlJoinAll};
-use anyhow::{anyhow, Result};
+use crate::utils::{UrlJoinAll, table::Table};
+use anyhow::{Result, anyhow};
 use assert2::assert;
 use die_exit::DieWith;
 use log::debug;
@@ -94,7 +94,7 @@ pub struct Repo {
 impl Default for Repo {
     fn default() -> Self {
         Self {
-            name: "".into(),
+            name: String::new(),
             #[cfg(not(windows))]
             bin_name: "".into(),
             #[cfg(windows)]
@@ -160,7 +160,7 @@ impl Repo {
         {
             self.bin_name = if std::path::Path::new(&bin_name)
                 .extension()
-                .map_or(false, |ext| ext.eq_ignore_ascii_case("exe"))
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
             {
                 bin_name
             } else {
@@ -257,7 +257,7 @@ impl From<&str> for Repo {
     /// Construct a repo from a string, could be a url or a name.
     #[inline]
     fn from(value: &str) -> Self {
-        let name = value.as_ref();
+        let name = value;
         let url = Url::parse(name);
         if let Ok(url) = url {
             Self::from(url)

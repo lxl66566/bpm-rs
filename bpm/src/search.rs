@@ -4,7 +4,7 @@ use anyhow::Result;
 use assert2::assert;
 use colored::Colorize;
 use die_exit::{die, Die};
-use log::{debug, info, warn};
+use log::{debug, info};
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -192,9 +192,9 @@ pub trait SearchableSequence {
 
 impl SearchableSequence for RepoList {
     async fn pre_install(self, quiet: bool, interactive: bool, sort: SortParam) -> Self {
-        let (tx, mut rx) = mpsc::channel(self.len());
+        let (tx, rx) = mpsc::channel(self.len());
 
-        for repo in self.0.into_iter() {
+        for repo in self.0 {
             let tx = tx.clone();
             tokio::spawn(async move {
                 let search_result = repo.search(sort).await;

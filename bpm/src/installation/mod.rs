@@ -50,16 +50,16 @@ where
             if !*DRY_RUN.read().unwrap() {
                 fs::remove_dir(&src_path)?;
             }
-            info!("Moving dir : {:?} -> {:?}", src_path, dst_path);
+            info!("Moving dir : {src_path:?} -> {dst_path:?}");
             f(&src_path, &dst_path)?;
         } else if src_path.is_file() {
             if !*DRY_RUN.read().unwrap() {
                 fs::rename(&src_path, &dst_path)?;
             }
-            info!("Moving file: {:?} -> {:?}", src_path, dst_path);
+            info!("Moving file: {src_path:?} -> {dst_path:?}");
             f(&src_path, &dst_path)?;
         } else {
-            warn!("Skipping non-file & non-directory: {:?}", src_path);
+            warn!("Skipping non-file & non-directory: {src_path:?}");
         }
     }
     Ok(())
@@ -209,7 +209,7 @@ impl Installation for Repo {
     fn uninstall(&mut self, config: &Config) -> Result<()> {
         if *DRY_RUN.read().unwrap() {
             for file in &self.installed_files {
-                info!("dry run: Remove file: `{:?}`", file);
+                info!("dry run: Remove file: `{file:?}`");
             }
             return Ok(());
         }
@@ -259,9 +259,9 @@ impl Installation for Repo {
             let cmd_path = config.bin_path().join(bin_name).with_extension("cmd");
             let sh_path = config.bin_path().join(bin_name);
             if *DRY_RUN.read().unwrap() {
-                info!("dry run: Create lnk: {:?} -> {:?}", bin_path, lnk_path);
-                info!("dry run: Create cmd: {:?} -> {:?}", bin_path, cmd_path);
-                info!("dry run: Create sh: {:?} -> {:?}", bin_path, cmd_path);
+                info!("dry run: Create lnk: {bin_path:?} -> {lnk_path:?}");
+                info!("dry run: Create cmd: {bin_path:?} -> {cmd_path:?}");
+                info!("dry run: Create sh: {bin_path:?} -> {cmd_path:?}");
                 continue;
             }
             // 删除现有的文件
@@ -278,7 +278,7 @@ impl Installation for Repo {
             // 创建 lnk
             let sl = ShellLink::new(&bin_path)?;
             sl.create_lnk(&lnk_path)?;
-            info!("Create lnk: {:?} -> {:?}", bin_path, lnk_path);
+            info!("Create lnk: {bin_path:?} -> {lnk_path:?}");
             self.installed_files.push(lnk_path);
 
             // 创建 cmd
@@ -291,7 +291,7 @@ impl Installation for Repo {
                     .display()
             );
             fs::write(&cmd_path, cmd_content)?;
-            info!("Create cmd: {:?} -> {:?}", bin_path, cmd_path);
+            info!("Create cmd: {bin_path:?} -> {cmd_path:?}");
             self.installed_files.push(cmd_path);
 
             // 创建 sh
@@ -306,14 +306,11 @@ fi"#,
                 windows_path_to_wsl(&bin_path)
             );
             std::fs::write(&sh_path, sh_content)?;
-            info!("Create sh: {:?} -> {:?}", bin_path, sh_path);
+            info!("Create sh: {bin_path:?} -> {sh_path:?}");
             self.installed_files.push(sh_path);
         }
         info!("Successfully installed `{}`.", self.name);
-        info!(
-            "You can press `Win+r`, enter {} to start software, or execute in cmd.",
-            temp
-        );
+        info!("You can press `Win+r`, enter {temp} to start software, or execute in cmd.");
         Ok(())
     }
 }

@@ -32,7 +32,7 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<P
                     let ext = Path::new(
                         url.path_segments()
                             .expect("url should has path")
-                            .last()
+                            .next_back()
                             .expect("url should has filename"),
                     )
                     .extension()

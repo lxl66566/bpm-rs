@@ -101,7 +101,7 @@ impl Searchable for Repo {
         run(&select_menu);
         let temp = mut_menu(&select_menu);
         let selected = temp.selected_item_name();
-        info!("selected repo: {}", selected);
+        info!("selected repo: {selected}");
         self.set_by_url(selected);
     }
 
@@ -118,7 +118,7 @@ impl Searchable for Repo {
                 "latest",
             ])
             .expect("Invalid path.");
-        debug!("Get assets from API: {}", api);
+        debug!("Get assets from API: {api}");
         match REQUEST_CLIENT.get(api).send().await {
             Ok(response) if response.status().is_success() => {
                 let releases: serde_json::Value = response

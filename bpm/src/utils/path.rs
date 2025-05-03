@@ -89,12 +89,14 @@ fn find_files_by_name_inner(dir: &Path, file_name: &str, results: &mut Vec<PathB
     }
 }
 
+#[cfg(windows)]
 /// convert a windows path to posix path string.
 ///
 /// # Examples
 ///
 /// ```
 /// use bpm::utils::path::windows_path_to_windows_bash;
+/// #[cfg(windows)]
 /// assert_eq!(windows_path_to_windows_bash("C:\\Users\\lxl\\bpm\\bin"), "/c/Users/lxl/bpm/bin");
 /// ```
 ///
@@ -122,12 +124,14 @@ pub fn windows_path_to_windows_bash<P: AsRef<Path>>(p: P) -> String {
     format!("/{}/{}", drive, relative_path.replace('\\', "/"))
 }
 
+#[cfg(windows)]
 /// convert a windows path to wsl path string.
 ///
 /// # Examples
 ///
 /// ```
 /// use bpm::utils::path::windows_path_to_wsl;
+/// #[cfg(windows)]
 /// assert_eq!(windows_path_to_wsl("C:\\Users\\lxl\\bpm\\bin"), "/mnt/c/Users/lxl/bpm/bin");
 /// ```
 ///

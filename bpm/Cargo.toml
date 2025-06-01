@@ -26,7 +26,7 @@ serde               = { version = "1.0.214", features = ["derive"] }
 serde_json          = "1.0.133"
 strum_macros        = "0.27.1"
 tap                 = "1.0.1"
-tempfile            = "3.13.0"
+tempfile            = "3.20.0"
 terminal-menu       = "3.0.0"
 tokio               = { version = "1.41.0", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = "2.2.5"

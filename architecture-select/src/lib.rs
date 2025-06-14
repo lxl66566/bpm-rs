@@ -1,3 +1,6 @@
+#![doc = include_str!("../README.md")]
+
+#[inline]
 fn platform_markers() -> Vec<&'static str> {
     if cfg!(target_os = "linux") {
         vec!["linux", "unix"]
@@ -12,6 +15,7 @@ fn platform_markers() -> Vec<&'static str> {
     }
 }
 
+#[inline]
 fn architecture_markers() -> Vec<&'static str> {
     if cfg!(target_arch = "x86_64") {
         vec!["x64", "x86_64", "amd64"]
@@ -106,27 +110,39 @@ fn match_inner(
     )
 }
 
-pub fn select_list(
-    select_list: impl IntoIterator<Item = String>,
+pub fn select_list<S: AsRef<str>>(
+    select_list: impl IntoIterator<Item = S>,
     prompts_with_match_pos: &[(&str, MatchPos)],
     combination: Option<Combination>,
     case_sensitive: Option<bool>,
-) -> Vec<String> {
+) -> Vec<S> {
     select_list
         .into_iter()
-        .filter(|item| match_inner(item, prompts_with_match_pos, combination, case_sensitive))
+        .filter(|item| {
+            match_inner(
+                item.as_ref(),
+                prompts_with_match_pos,
+                combination,
+                case_sensitive,
+            )
+        })
         .collect()
 }
 
-pub fn sort_list(
-    mut sort_list: Vec<String>,
+pub fn sort_list<S: AsRef<str>>(
+    mut sort_list: Vec<S>,
     prompts_with_match_pos: &[(&str, MatchPos)],
     combination: Option<Combination>,
     case_sensitive: Option<bool>,
     reverse: Option<bool>,
-) -> Vec<String> {
+) -> Vec<S> {
     sort_list.sort_by_key(|item| {
-        !match_inner(item, prompts_with_match_pos, combination, case_sensitive)
+        !match_inner(
+            item.as_ref(),
+            prompts_with_match_pos,
+            combination,
+            case_sensitive,
+        )
     });
     if reverse.unwrap_or(false) {
         sort_list.reverse();
@@ -134,7 +150,7 @@ pub fn sort_list(
     sort_list
 }
 
-pub fn select(assets: Vec<String>) -> Vec<String> {
+pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
     // Select platform
     let assets = select_list(assets, platform_markers_with_pos().as_ref(), None, None);
 

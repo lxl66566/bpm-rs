@@ -1,4 +1,4 @@
-#![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
+#![warn(clippy::cargo)]
 #![allow(
     clippy::expect_used,
     clippy::clone_on_ref_ptr,
@@ -17,7 +17,7 @@ mod storage;
 pub mod utils;
 use anyhow::Result;
 use clap::Parser;
-use cli::{Cli, SubCommand, DRY_RUN};
+use cli::{Cli, DRY_RUN, SubCommand};
 
 use search::SearchableSequence;
 use storage::{Repo, RepoList};

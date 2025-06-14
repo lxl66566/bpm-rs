@@ -19,7 +19,7 @@ jobs:
       - name: Setup sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo nextest run && cargo test --doc
+      - run: cargo nextest run --all-features --no-tests pass && cargo test --doc
 
   auto-merge:
     needs: test

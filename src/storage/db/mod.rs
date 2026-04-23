@@ -1,9 +1,11 @@
 pub mod file;
 
-use super::{Repo, RepoList};
+use std::path::Path;
+
 use anyhow::Result;
 pub use file::Db;
-use std::path::Path;
+
+use super::{Repo, RepoList};
 
 pub trait DbOperation {
     fn create_or_open(path: impl AsRef<Path>) -> Result<Self>

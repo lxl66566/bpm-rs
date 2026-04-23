@@ -3,7 +3,7 @@ use std::sync::LazyLock as Lazy;
 use anyhow::Result;
 use assert2::assert;
 use colored::Colorize;
-use die_exit::{die, Die};
+use die_exit::{Die, die};
 use log::{debug, info};
 use tokio::sync::mpsc;
 use url::Url;
@@ -156,7 +156,9 @@ impl Searchable for Repo {
                     eprintln!("Selected asset: {selected_asset}");
                     self
                 } else {
-                    die!("No available asset found in this repo. If you're sure there's a valid asset, use `--interactive`.");
+                    die!(
+                        "No available asset found in this repo. If you're sure there's a valid asset, use `--interactive`."
+                    );
                 }
             }
             Ok(response) => {
@@ -191,8 +193,8 @@ pub trait SearchableSequence {
 }
 
 impl SearchableSequence for RepoList {
-    async fn pre_install(self, quiet: bool, interactive: bool, sort: SortParam) -> Self {
-        let (tx, rx) = mpsc::channel(self.len());
+    async fn pre_install(self, _quiet: bool, _interactive: bool, sort: SortParam) -> Self {
+        let (tx, _rx) = mpsc::channel(self.len());
 
         for repo in self.0 {
             let tx = tx.clone();

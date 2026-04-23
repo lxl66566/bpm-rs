@@ -26,7 +26,8 @@ pub trait PathExt {
 impl<P: AsRef<Path>> PathExt for P {
     /// Find all files with the given name in the given directory recursively.
     ///
-    /// The pattern should be only filename, and should not contains `*` or `?` or other wildcard characters.
+    /// The pattern should be only filename, and should not contains `*` or `?`
+    /// or other wildcard characters.
     fn glob_name(&self, pattern: &str) -> Vec<PathBuf> {
         let mut results = Vec::new();
         find_files_by_name_inner(self.as_ref(), pattern, &mut results);
@@ -80,10 +81,10 @@ fn find_files_by_name_inner(dir: &Path, file_name: &str, results: &mut Vec<PathB
             let path = entry.path();
             if path.is_dir() {
                 find_files_by_name_inner(&path, file_name, results);
-            } else if let Some(name) = path.file_name() {
-                if name == file_name {
-                    results.push(path);
-                }
+            } else if let Some(name) = path.file_name()
+                && name == file_name
+            {
+                results.push(path);
             }
         }
     }

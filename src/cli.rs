@@ -23,7 +23,8 @@ pub enum SubCommand {
         #[clap(required = true)]
         packages: Vec<String>,
 
-        /// Specify the binary executable filename, otherwise use package name by default.
+        /// Specify the binary executable filename, otherwise use package name
+        /// by default.
         #[arg(short, long)]
         bin_name: Option<String>,
 
@@ -36,15 +37,18 @@ pub enum SubCommand {
         )]
         local: Option<PathBuf>,
 
-        /// Do not ask, install the first repo in the search result, and show less messages.
+        /// Do not ask, install the first repo in the search result, and show
+        /// less messages.
         #[arg(short, long, conflicts_with = "interactive")]
         quiet: bool,
 
-        /// Install given binary only. Use package name as binary name by default.
+        /// Install given binary only. Use package name as binary name by
+        /// default.
         #[arg(long)]
         one_bin: bool,
 
-        /// Bpm prefers musl target by default. Use this flag to prefer gnu target.
+        /// Bpm prefers musl target by default. Use this flag to prefer gnu
+        /// target.
         #[arg(long)]
         prefer_gnu: bool,
 

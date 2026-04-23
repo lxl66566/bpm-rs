@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
-use compress_tools::{uncompress_archive, Ownership};
+use compress_tools::{Ownership, uncompress_archive};
 use log::debug;
 
 use crate::installation::only_one_file_in_dir;

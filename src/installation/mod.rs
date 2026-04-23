@@ -73,22 +73,22 @@ where
 #[cfg(windows)]
 fn check_and_install_msi(src: impl AsRef<Path>) -> std::io::Result<bool> {
     let src = src.as_ref();
-    if let Some(file) = only_one_file_in_dir(src)? {
-        if file.extension() == Some(std::ffi::OsStr::new("msi")) {
-            info!("Start to install msi file {}.", file.display());
-            if *DRY_RUN.read().unwrap() {
-                info!("Dry run, skip installation.");
-                return Ok(true);
-            }
-            let mut command = std::process::Command::new("msiexec.exe");
-            command.arg("/i");
-            command.arg(file);
-            command.arg("/quiet");
-            command.arg("/qr");
-            command.arg("/norestart");
-            command.spawn()?.wait()?;
+    if let Some(file) = only_one_file_in_dir(src)?
+        && file.extension() == Some(std::ffi::OsStr::new("msi"))
+    {
+        info!("Start to install msi file {}.", file.display());
+        if *DRY_RUN.read().unwrap() {
+            info!("Dry run, skip installation.");
             return Ok(true);
         }
+        let mut command = std::process::Command::new("msiexec.exe");
+        command.arg("/i");
+        command.arg(file);
+        command.arg("/quiet");
+        command.arg("/qr");
+        command.arg("/norestart");
+        command.spawn()?.wait()?;
+        return Ok(true);
     }
     Ok(false)
 }

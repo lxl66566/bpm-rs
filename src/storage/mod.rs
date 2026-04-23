@@ -2,19 +2,21 @@
 
 pub mod db;
 
-use crate::utils::{UrlJoinAll, table::Table};
-use anyhow::{Result, anyhow};
-use assert2::assert;
-use die_exit::DieWith;
-use log::debug;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
     path::{Path, PathBuf},
 };
+
+use anyhow::{Result, anyhow};
+use assert2::assert;
+use die_exit::DieWith;
+use log::debug;
+use serde::{Deserialize, Serialize};
 use tap::Tap;
 use url::Url;
+
+use crate::utils::{UrlJoinAll, table::Table};
 
 /// Split a full name into the first and second part.
 ///

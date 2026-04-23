@@ -4,10 +4,11 @@ use std::{
     sync::LazyLock as Lazy,
 };
 
-use crate::storage::db::{Db, DbOperation};
 use die_exit::{Die, DieWith};
 use home::home_dir;
 use serde::{Deserialize, Serialize};
+
+use crate::storage::db::{Db, DbOperation};
 
 pub static CONFIG_POSITION: Lazy<PathBuf> = Lazy::new(|| {
     home_dir()

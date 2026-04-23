@@ -28,7 +28,7 @@ tap                 = "1"
 tempfile            = "3"
 terminal-menu       = "3.0"
 tokio               = { version = "1.45", features = ["rt", "rt-multi-thread", "macros"] }
-trauma              = { git = "https://github.com/lxl66566/trauma.git", default-features = false, features = ["rustls"] }
+trauma              = { version = "2", features = ["rustls"] }
 url                 = { version = "2", features = ["serde"] }
 
 [target."cfg(windows)".dependencies]

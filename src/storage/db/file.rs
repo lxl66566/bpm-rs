@@ -1,11 +1,12 @@
 //! use `config-file2` as the backend of the storage.
 
-use crate::storage::{Repo, RepoList};
+use std::{path::PathBuf, sync::Mutex};
 
-use super::DbOperation;
 use config_file2::{LoadConfigFile, StoreConfigFile};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Mutex};
+
+use super::DbOperation;
+use crate::storage::{Repo, RepoList};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Db {

@@ -18,7 +18,6 @@ pub mod utils;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, DRY_RUN, SubCommand};
-
 use search::SearchableSequence;
 use storage::{Repo, RepoList};
 use utils::{log::set_quiet_log, log_init};
@@ -36,14 +35,14 @@ impl SubCommand {
     async fn install(&self) -> Result<()> {
         if let Self::Install {
             packages,
-            bin_name,
-            local,
+            bin_name: _,
+            local: _,
             quiet,
-            one_bin,
-            prefer_gnu,
+            one_bin: _,
+            prefer_gnu: _,
             dry_run,
             interactive,
-            filter,
+            filter: _,
             sort,
         } = self
         {
@@ -67,7 +66,7 @@ impl SubCommand {
                 .map(|p| Repo::from(p.as_str()))
                 .collect::<Vec<_>>()
                 .into();
-            let res = repo_list.pre_install(*quiet, *interactive, *sort).await;
+            let _res = repo_list.pre_install(*quiet, *interactive, *sort).await;
             todo!();
 
             Ok(())

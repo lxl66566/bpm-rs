@@ -3,9 +3,9 @@
 use std::fmt;
 
 use comfy_table::{
-    presets::UTF8_FULL,
     Attribute, Cell, Color,
     TableComponent::{BottomLeftCorner, BottomRightCorner, TopLeftCorner, TopRightCorner},
+    presets::UTF8_FULL,
 };
 
 use crate::storage::Repo;

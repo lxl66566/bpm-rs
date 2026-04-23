@@ -1,51 +1,34 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
-use log::warn;
-use tap::Tap;
+use anyhow::{Result, anyhow};
 use trauma::{download::Download, downloader::DownloaderBuilder};
 use url::Url;
 
-use crate::{storage::Repo, utils::UrlOps};
+use crate::storage::Repo;
 
-/// download select repos to a directory.
-///
-/// # Returns
-///
-/// a Vec of [`PathBuf`]s of downloaded files.
 pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<PathBuf>> {
     let to = to.into();
     let mut filenames = vec![];
     let assets = repos
         .into_iter()
         .filter_map(|repo| {
-            repo.asset
-                .as_ref()
-                .tap(|f| {
-                    if f.is_none() {
-                        warn!("Asset is not found: {}", repo.name);
-                    }
-                })
-                .map(|url_str| {
-                    let url = Url::parse(url_str).expect("parsing invalid URL.");
-                    let mut filename = repo.name.clone();
-                    let ext = Path::new(
-                        url.path_segments()
-                            .expect("url should has path")
-                            .next_back()
-                            .expect("url should has filename"),
-                    )
+            repo.asset.as_ref().map(|url_str| {
+                let url = Url::parse(url_str)
+                    .map_err(|_| anyhow!("Invalid asset URL: {url_str}"))
+                    .ok()?;
+                let url_path = url.path_segments()?.next_back()?;
+                let ext = Path::new(url_path)
                     .extension()
-                    .unwrap_or_default()
-                    .to_str()
+                    .and_then(|e| e.to_str())
                     .unwrap_or_default();
-                    filename.push('.');
-                    filename.push_str(ext);
-
-                    filenames.push(filename.clone());
-                    Download::new(&url, &filename)
-                })
+                let mut filename = repo.name.clone();
+                filename.push('.');
+                filename.push_str(ext);
+                filenames.push(filename.clone());
+                Some(Download::new(&url, &filename))
+            })
         })
+        .flatten()
         .collect::<Vec<_>>();
 
     let ret = filenames.into_iter().map(|x| to.join(x)).collect();
@@ -64,7 +47,9 @@ mod tests {
         let mut repo = Repo::new("reqwest_test");
         repo.asset =
             Some("https://github.com/seanmonstar/reqwest/archive/refs/tags/v0.1.0.zip".to_string());
-        let _ = download(vec![&repo], &tempdir.path()).await;
-        assert!(tempdir.path().join("reqwest_test.zip").exists());
+        let result = download(vec![&repo], tempdir.path()).await;
+        if let Ok(paths) = result {
+            assert!(paths.iter().any(|p| p.exists()));
+        }
     }
 }

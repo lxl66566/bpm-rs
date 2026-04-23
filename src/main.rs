@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-fn main() -> Result<()> {
-    use bpm::main;
-    main()
+#[tokio::main]
+async fn main() -> Result<()> {
+    bpm::run().await
 }

@@ -9,23 +9,12 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use assert2::assert;
-use die_exit::DieWith;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use tap::Tap;
 use url::Url;
 
 use crate::utils::{UrlJoinAll, table::Table};
 
-/// Split a full name into the first and second part.
-///
-/// Returns error if the full name contains not exactly 2 parts.
-///
-/// # Example
-///
-/// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the
-/// `repo_name` would be `myrepo`.
 fn split_full_name(full_name: &str) -> Result<(String, String)> {
     let mut iter = full_name
         .trim_matches(|x: char| x == '/' || x.is_ascii_whitespace())
@@ -39,7 +28,6 @@ fn split_full_name(full_name: &str) -> Result<(String, String)> {
             .to_string(),
     );
     debug_assert!(iter.count() == 0, "fullname has more than 2 parts");
-
     Ok(res)
 }
 
@@ -75,7 +63,7 @@ impl fmt::Display for Site {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Repo {
     pub name: String,
     pub bin_name: String,
@@ -89,32 +77,10 @@ pub struct Repo {
     pub prefer_gnu: bool,
     pub no_pre: bool,
     pub one_bin: bool,
+    #[serde(default)]
+    pub asset_filter: Vec<String>,
     #[cfg(windows)]
     pub is_msi: bool,
-}
-
-impl Default for Repo {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            #[cfg(not(windows))]
-            bin_name: "".into(),
-            #[cfg(windows)]
-            bin_name: "*.exe".into(),
-            site: Site::default(),
-            repo_name: None,
-            repo_owner: None,
-            asset: None,
-            version: None,
-            installed_files: Vec::new(),
-            installed_time: None,
-            prefer_gnu: false,
-            no_pre: false,
-            one_bin: false,
-            #[cfg(windows)]
-            is_msi: false,
-        }
-    }
 }
 
 impl Ord for Repo {
@@ -142,17 +108,11 @@ impl Repo {
         #[cfg(windows)]
         assert!(
             !["app", "bin"].contains(&name.as_str()),
-            "Invalid repo name: `{name}`. Must not be one of them: `app`, `bin`"
+            "Invalid repo name: `{name}`. Must not be `app` or `bin`"
         );
         Self {
-            #[cfg(not(windows))]
             name: name.clone(),
-            #[cfg(windows)]
-            name,
-            #[cfg(not(windows))]
             bin_name: name,
-            #[cfg(windows)]
-            bin_name: "*.exe".into(),
             ..Default::default()
         }
     }
@@ -177,12 +137,9 @@ impl Repo {
     }
 
     pub fn url(&self) -> Option<Url> {
-        Some(
-            self.site
-                .base()
-                .join_all_str([self.repo_owner.as_deref()?, self.repo_name.as_deref()?])
-                .die_with(|e| format!("trying to construct an invalid url. Err: {e}")),
-        )
+        let owner = self.repo_owner.as_deref()?;
+        let repo_name = self.repo_name.as_deref()?;
+        self.site.base().join_all_str([owner, repo_name]).ok()
     }
 
     pub fn dedup_file_list(&mut self) {
@@ -197,16 +154,6 @@ impl Repo {
         self.installed_files.push(file);
     }
 
-    /// Set the `repo_name` and `repo_owner` by fullname.
-    ///
-    /// # Example
-    ///
-    /// With the full name `me/myrepo`, the `repo_owner` would be `me`, and the
-    /// `repo_name` would be `myrepo`.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if the full name contains not exactly 2 parts.
     pub fn set_by_fullname(&mut self, full_name: &str) -> Result<()> {
         let res = split_full_name(full_name)?;
         debug!("set repo_name: {}, repo_owner: {}", res.1, res.0);
@@ -215,11 +162,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Set the `repo_name` and `repo_owner` by url.
-    ///
-    /// # Example
-    ///
-    /// with the url `https://github.com/lxl66566/bpm-rs/`, the `repo_owner` would be `lxl66566`, and the `repo_name` would be `bpm-rs`.
     pub fn set_by_url(&mut self, url: &str) {
         let binding = Url::parse(url).expect("parsing invalid URL.");
         let full_name = binding.path();
@@ -238,11 +180,6 @@ impl Repo {
 }
 
 impl From<Url> for Repo {
-    /// Construct a repo from a url.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the url is invalid.
     #[inline]
     fn from(value: Url) -> Self {
         let fullname = value.path();
@@ -256,18 +193,16 @@ impl From<Url> for Repo {
 }
 
 impl From<&str> for Repo {
-    /// Construct a repo from a string, could be a url or a name.
     #[inline]
     fn from(value: &str) -> Self {
-        let name = value;
-        let url = Url::parse(name);
-        if let Ok(url) = url {
-            Self::from(url)
-        } else {
-            Self::new(name)
+        match Url::parse(value) {
+            Ok(url) => Self::from(url),
+            Err(_) => Self::new(value),
         }
     }
 }
+
+use tap::Tap;
 
 #[derive(
     Debug,
@@ -281,7 +216,6 @@ impl From<&str> for Repo {
     derive_more::Deref,
     derive_more::DerefMut,
 )]
-
 pub struct RepoList(pub Vec<Repo>);
 
 impl fmt::Display for RepoList {
@@ -307,5 +241,37 @@ mod tests {
         );
         assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
         assert_eq!(repo.repo_owner.unwrap(), "lxl66566");
+    }
+
+    #[test]
+    fn test_from_str_url() {
+        let repo = Repo::from("https://github.com/owner/repo");
+        assert_eq!(repo.name, "repo");
+        assert_eq!(repo.repo_owner.unwrap(), "owner");
+    }
+
+    #[test]
+    fn test_from_str_name() {
+        let repo = Repo::from("my-package");
+        assert_eq!(repo.name, "my-package");
+        assert!(repo.repo_owner.is_none());
+    }
+
+    #[test]
+    fn test_with_bin_name() {
+        let repo = Repo::new("test").with_bin_name("mybin".to_string());
+        #[cfg(windows)]
+        assert_eq!(repo.bin_name, "mybin.exe");
+        #[cfg(not(windows))]
+        assert_eq!(repo.bin_name, "mybin");
+    }
+
+    #[test]
+    fn test_repo_list_display() {
+        let list = RepoList(vec![
+            Repo::new("bpm-rs").by_url("https://github.com/lxl66566/bpm-rs"),
+        ]);
+        let s = format!("{list}");
+        println!("{s}");
     }
 }

@@ -1,15 +1,14 @@
 use std::sync::LazyLock as Lazy;
 
-use anyhow::Result;
-use assert2::assert;
+use anyhow::{Result, anyhow, bail};
 use colored::Colorize;
-use die_exit::{Die, die};
 use log::{debug, info};
-use tokio::sync::mpsc;
+use reqwest::StatusCode;
 use url::Url;
 
 use crate::{
     cli::SortParam,
+    error::BpmError,
     storage::{Repo, RepoList},
     utils::UrlJoinAll,
 };
@@ -19,26 +18,23 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
         .build()
-        .die("An error occured in building request client.")
+        .expect("Failed to build HTTP client")
 });
 
-/// A trait for searching
 pub trait Searchable {
     async fn search(&self, sort: SortParam) -> Result<Vec<String>>;
-    fn ask(&mut self, items: Vec<String>, quiet: bool);
-    async fn get_asset(&mut self) -> &mut Self;
+    fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()>;
+    async fn get_asset(&mut self, interactive: bool) -> Result<()>;
     async fn update_asset(&mut self) -> Option<(String, String)>;
 }
 
 impl Searchable for Repo {
     async fn search(&self, sort: SortParam) -> Result<Vec<String>> {
-        // Search API: https://docs.github.com/zh/rest/search/search?apiVersion=2022-11-28#search-repositories
         if self.url().is_some() {
-            debug!(
-                "Repo `{}`'s url already exists. Skipping search.",
-                self.name
-            );
+            debug!("Repo `{}` url already set, skipping search.", self.name);
+            return Ok(vec![]);
         }
+
         let url = Url::parse_with_params(
             self.site
                 .api_base()
@@ -50,163 +46,200 @@ impl Searchable for Repo {
                 ("page", "1"),
                 ("sort", sort.as_ref()),
             ],
-        )
-        .expect("This construct should be ok.");
-        debug!("search url: {}", &url);
-        let response = REQUEST_CLIENT.get(url).send().await;
-        match response {
-            Ok(r) if r.status().is_success() => {
-                let data: serde_json::Value = r.json().await.unwrap();
-                data["items"].as_array().map_or_else(
-                    || {
-                        die!("No items found in the response");
-                    },
-                    |items| {
-                        let repos: Vec<String> = items
-                            .iter()
-                            .map(|item| item["html_url"].as_str().unwrap_or_default().to_string())
-                            .collect();
-                        Ok(repos)
-                    },
-                )
-            }
-            Ok(r) => {
-                die!("Unexpected status: {}", r.status());
-            }
-            Err(e) => {
-                die!("Error fetching data: {}", e);
-            }
+        )?;
+
+        debug!("search url: {url}");
+        let response = REQUEST_CLIENT.get(url).send().await?;
+
+        if !response.status().is_success() {
+            bail!("GitHub search API returned status: {}", response.status());
         }
+
+        let data: serde_json::Value = response.json().await?;
+
+        let items = data["items"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No items found in search response"))?;
+
+        let repos: Vec<String> = items
+            .iter()
+            .filter_map(|item| item["html_url"].as_str().map(String::from))
+            .collect();
+
+        Ok(repos)
     }
 
-    #[allow(clippy::significant_drop_tightening)]
-    fn ask(&mut self, items: Vec<String>, quiet: bool) {
-        use terminal_menu::{button, label, menu, mut_menu, run};
-        assert!(!items.is_empty(), "No repos found.");
+    fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()> {
+        if items.is_empty() {
+            bail!("No repos found for '{}'", self.name);
+        }
+
         if quiet {
             self.set_by_url(items[0].as_str());
-            return;
+            return Ok(());
         }
+
+        use terminal_menu::{button, label, menu, mut_menu, run};
         let mut menu_items = vec![label(
             "Please select the repo you want to install:"
                 .bold()
                 .to_string(),
         )];
-        menu_items.reserve(items.len());
-        items
-            .into_iter()
-            .map(button)
-            .for_each(|x| menu_items.push(x));
+        for item in &items {
+            menu_items.push(button(item));
+        }
         let select_menu = menu(menu_items);
         run(&select_menu);
         let temp = mut_menu(&select_menu);
         let selected = temp.selected_item_name();
         info!("selected repo: {selected}");
         self.set_by_url(selected);
+        Ok(())
     }
 
-    async fn get_asset(&mut self) -> &mut Self {
-        assert!(self.repo_owner.is_some() && self.repo_name.is_some());
-        let api = self
-            .site
-            .api_base()
-            .join_all_str([
-                "repos",
-                self.repo_owner.as_deref().unwrap(),
-                self.repo_name.as_deref().unwrap(),
-                "releases",
-                "latest",
-            ])
-            .expect("Invalid path.");
+    async fn get_asset(&mut self, interactive: bool) -> Result<()> {
+        let (owner, name) = (self.repo_owner.as_deref(), self.repo_name.as_deref());
+        if owner.is_none() || name.is_none() {
+            bail!("repo_owner or repo_name not set");
+        }
+
+        let api = self.site.api_base().join_all_str([
+            "repos",
+            owner.unwrap(),
+            name.unwrap(),
+            "releases",
+            "latest",
+        ])?;
+
         debug!("Get assets from API: {api}");
-        match REQUEST_CLIENT.get(api).send().await {
-            Ok(response) if response.status().is_success() => {
-                let releases: serde_json::Value = response
-                    .json()
-                    .await
-                    .die("Assets API response is not a valid json");
+        let response = REQUEST_CLIENT.get(api).send().await?;
 
-                self.version = Some(
-                    releases["tag_name"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string(),
-                );
+        if response.status() == StatusCode::NOT_FOUND {
+            bail!("No releases found for {}/{}", owner.unwrap(), name.unwrap());
+        }
+        if !response.status().is_success() {
+            bail!("GitHub releases API returned status: {}", response.status());
+        }
 
-                let raw_assets = releases["assets"]
-                    .as_array()
-                    .die("Assets API response has no array named `assets`");
-                if raw_assets.is_empty() {
-                    die!(
-                        "No releases found for {}/{}",
-                        self.repo_owner.as_ref().unwrap(),
-                        self.repo_name.as_ref().unwrap()
-                    );
-                }
+        let releases: serde_json::Value = response.json().await?;
+        self.version = releases["tag_name"].as_str().map(String::from);
 
-                let assets: Vec<String> = raw_assets
-                    .iter()
-                    .filter_map(|asset| asset["browser_download_url"].as_str().map(String::from))
-                    .collect();
+        let raw_assets = releases["assets"].as_array().ok_or_else(|| {
+            BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
+        })?;
 
-                let assets = architecture_select::select(assets);
+        if raw_assets.is_empty() {
+            return Err(BpmError::AssetNotFound(
+                owner.unwrap().to_string(),
+                name.unwrap().to_string(),
+            )
+            .into());
+        }
 
-                if let Some(selected_asset) = assets.first() {
-                    self.asset = Some(selected_asset.to_string());
-                    eprintln!("Selected asset: {selected_asset}");
-                    self
-                } else {
-                    die!(
-                        "No available asset found in this repo. If you're sure there's a valid asset, use `--interactive`."
-                    );
-                }
-            }
-            Ok(response) => {
-                die!(
-                    "Unexpected response status: {} from the releases API",
-                    response.status()
-                );
-            }
-            Err(err) => {
-                die!("Error fetching releases data: {}", err);
-            }
+        let assets: Vec<String> = raw_assets
+            .iter()
+            .filter_map(|a| a["browser_download_url"].as_str().map(String::from))
+            .collect();
+
+        let filtered = if !self.asset_filter.is_empty() {
+            assets
+                .into_iter()
+                .filter(|a| self.asset_filter.iter().all(|f| a.contains(f)))
+                .collect::<Vec<_>>()
+        } else {
+            assets
+        };
+
+        let selected = architecture_select::select(filtered);
+
+        if interactive && selected.len() > 1 {
+            let choice = ask_asset_interactive(&selected)?;
+            self.asset = Some(choice);
+        } else if let Some(asset) = selected.first() {
+            self.asset = Some(asset.clone());
+        } else {
+            return Err(BpmError::InvalidAsset(self.name.clone()).into());
+        }
+
+        info!("Selected asset: {}", self.asset.as_deref().unwrap_or(""));
+        Ok(())
+    }
+
+    async fn update_asset(&mut self) -> Option<(String, String)> {
+        let old_version = self.version.clone()?;
+        if self.get_asset(false).await.is_err() {
+            return None;
+        }
+        let new_version = self.version.clone()?;
+        if old_version == new_version {
+            None
+        } else {
+            Some((old_version, new_version))
         }
     }
+}
 
-    ///  update assets list. Returns `None` if has no update, `(old_version,
-    /// new_version)` if has update.
-    async fn update_asset(&mut self) -> Option<(String, String)> {
-        let old_version = self.version.clone().unwrap();
-        self.get_asset().await;
-        self.version.clone().and_then(|new_version| {
-            if old_version == new_version {
-                None
-            } else {
-                Some((old_version, new_version))
-            }
-        })
+fn ask_asset_interactive(assets: &[String]) -> Result<String> {
+    use terminal_menu::{button, label, menu, mut_menu, run};
+    let mut items = vec![label("Select an asset:".bold().to_string())];
+    for asset in assets {
+        let short = asset.rsplit('/').next().unwrap_or(asset);
+        items.push(button(short));
     }
+    let m = menu(items);
+    run(&m);
+    let binding = mut_menu(&m);
+    let selected_name = binding.selected_item_name();
+    assets
+        .iter()
+        .find(|a| a.rsplit('/').next().unwrap_or(a) == selected_name)
+        .cloned()
+        .ok_or_else(|| anyhow!("Selected asset not found"))
 }
 
 pub trait SearchableSequence {
-    async fn pre_install(self, quiet: bool, interactive: bool, sort: SortParam) -> Self;
+    async fn search_all(self, quiet: bool, interactive: bool, sort: SortParam) -> Result<RepoList>;
 }
 
 impl SearchableSequence for RepoList {
-    async fn pre_install(self, _quiet: bool, _interactive: bool, sort: SortParam) -> Self {
-        let (tx, _rx) = mpsc::channel(self.len());
-
-        for repo in self.0 {
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let search_result = repo.search(sort).await;
-                tx.send((repo, search_result)).await
-            });
+    async fn search_all(self, quiet: bool, interactive: bool, sort: SortParam) -> Result<RepoList> {
+        let mut results = Vec::new();
+        for mut repo in self.0 {
+            if repo.url().is_none() {
+                let items = repo.search(sort).await?;
+                if !items.is_empty() {
+                    repo.ask(items, quiet)?;
+                }
+            }
+            if !interactive || repo.asset.is_none() {
+                repo.get_asset(interactive).await?;
+            }
+            results.push(repo);
         }
-
-        todo!()
+        Ok(RepoList(results))
     }
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_url_construction() {
+        let url = Url::parse("https://api.github.com").unwrap();
+        let joined = url.join_all_str(["search", "repositories"]).unwrap();
+        assert_eq!(
+            joined.as_str(),
+            "https://api.github.com/search/repositories"
+        );
+    }
+
+    #[test]
+    fn test_search_quiet_mode() {
+        let mut repo = Repo::new("test");
+        repo.repo_owner = Some("owner".to_string());
+        repo.repo_name = Some("repo".to_string());
+        let result = repo.ask(vec!["https://github.com/a/b".to_string()], true);
+        assert!(result.is_ok());
+    }
+}

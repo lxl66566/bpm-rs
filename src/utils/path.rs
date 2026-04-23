@@ -42,10 +42,14 @@ impl<P: AsRef<Path>> PathExt for P {
     }
 
     fn remove_all_allow_missing(&self) -> Result<(), std::io::Error> {
-        match fs::remove_dir_all(self) {
-            x @ Ok(()) => x,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e),
+        let path = self.as_ref();
+        if !path.exists() {
+            return Ok(());
+        }
+        if path.is_dir() {
+            fs::remove_dir_all(path)
+        } else {
+            fs::remove_file(path)
         }
     }
 

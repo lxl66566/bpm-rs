@@ -8,11 +8,11 @@ version = "0.1.0"
 [dependencies]
 anyhow              = "1.0"
 architecture-select = { path = "../architecture-select" }
-assert2             = "0.3"
+assert2             = "0.4"
 clap                = { version = "4.5", features = ["derive"] }
 colored             = "3"
 comfy-table         = "7.1"
-compress-tools      = "0.15.1"
+compress-tools      = "0.16.1"
 config-file2        = { version = "0.4", features = ["all"] }
 derive_more         = { version = "2", features = ["deref", "deref_mut", "from"] }
 die-exit            = { version = "0.5", features = ["red"] }
@@ -20,10 +20,10 @@ home                = "0.5"
 log                 = "0.4"
 path-absolutize     = "3"
 pretty_env_logger   = "0.5"
-reqwest             = { version = "0.12", default-features = false, features = ["charset", "http2", "system-proxy", "json", "rustls-tls"] }
+reqwest             = { version = "0.13", default-features = false, features = ["charset", "http2", "system-proxy", "json"] }
 serde               = { version = "1", features = ["derive"] }
 serde_json          = "1"
-strum_macros        = "0.27"
+strum_macros        = "0.28"
 tap                 = "1"
 tempfile            = "3"
 terminal-menu       = "3.0"

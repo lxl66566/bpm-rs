@@ -1,9 +1,45 @@
-[workspace]
-members  = ["bpm", "architecture-select"]
-resolver = "2"
+[package]
+edition = "2024"
+name    = "bpm"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow              = "1.0"
+architecture-select = { path = "architecture-select" }
+assert2             = "0.4"
+clap                = { version = "4.5", features = ["derive"] }
+colored             = "3"
+comfy-table         = "7.1"
+compress-tools      = "0.16.1"
+config-file2        = { version = "0.4", features = ["all"] }
+derive_more         = { version = "2", features = ["deref", "deref_mut", "from"] }
+die-exit            = { version = "0.5", features = ["red"] }
+home                = "0.5"
+log                 = "0.4"
+path-absolutize     = "3"
+pretty_env_logger   = "0.5"
+reqwest             = { version = "0.13", default-features = false, features = ["charset", "http2", "system-proxy", "json"] }
+serde               = { version = "1", features = ["derive"] }
+serde_json          = "1"
+strum_macros        = "0.28"
+tap                 = "1"
+tempfile            = "3"
+terminal-menu       = "3.0"
+tokio               = { version = "1.45", features = ["rt", "rt-multi-thread", "macros"] }
+trauma              = { git = "https://github.com/lxl66566/trauma.git", default-features = false, features = ["rustls"] }
+url                 = { version = "2", features = ["serde"] }
+
+[target."cfg(windows)".dependencies]
+mslnk       = "0.1.8"
+windows-env = "0.2.0"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.167"
 
 [profile.release]
 lto       = true
-opt-level = "z"
+opt-level = "s"
 panic     = "abort"
 strip     = true

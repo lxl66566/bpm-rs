@@ -48,3 +48,20 @@ impl DbOperation for Db {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::Repo;
+
+    #[test]
+    fn test_db_basic_operation() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db = Db::create_or_open(temp_dir.path().join("test.ron"))?;
+        db.insert_repo(Repo::new("bpm").by_url("https://github.com/lxl66566/bpm-rs/"))?;
+        db.insert_repo(Repo::new("abd").by_url("https://github.com/lxl6656645/b132/"))?;
+        let all = db.get_repo_list();
+        assert_eq!(all.len(), 2);
+        Ok(())
+    }
+}

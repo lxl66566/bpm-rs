@@ -61,8 +61,20 @@ mod tests {
         let db = Db::create_or_open(temp_dir.path().join("test.ron"))?;
         db.insert_repo(Repo::new("bpm").by_url("https://github.com/lxl66566/bpm-rs/"))?;
         db.insert_repo(Repo::new("abd").by_url("https://github.com/lxl6656645/b132/"))?;
+
         let all = db.get_repo_list();
         assert_eq!(all.len(), 2);
+
+        let found = db.get_repo("bpm").unwrap();
+        assert_eq!(found.name, "bpm");
+        assert_eq!(found.repo_owner.unwrap(), "lxl66566");
+
+        assert!(db.get_repo("nonexistent").is_none());
+
+        db.remove_repo("bpm").unwrap();
+        assert!(db.get_repo("bpm").is_none());
+        assert!(db.get_repo("abd").is_some());
+        assert_eq!(db.get_repo_list().len(), 1);
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ WIP
 
 ## Develop
 
-You need to install _openssl_ and _libarchive_.
+You need to install _libarchive_.
 
 - On windows:
   ```sh

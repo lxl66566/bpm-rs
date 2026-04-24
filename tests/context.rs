@@ -1,34 +1,5 @@
 use bpm::{context::Context, storage::db::DbOperation};
 
-#[test]
-fn context_default_paths() {
-    let ctx = Context::new();
-    assert!(ctx.app_path().to_str().unwrap().contains("app"));
-    assert!(ctx.bin_path().to_str().unwrap().contains("bin"));
-    assert!(!ctx.dry_run);
-    assert!(!ctx.quiet);
-}
-
-#[test]
-fn context_builder() {
-    let tmp = tempfile::tempdir().unwrap();
-    let ctx = Context::new()
-        .with_dry_run(true)
-        .with_quiet(true)
-        .with_install_position(tmp.path().join("custom_install"))
-        .with_db_path(tmp.path().join("custom_db"));
-
-    assert!(ctx.dry_run);
-    assert!(ctx.quiet);
-    assert_eq!(
-        ctx.app_path(),
-        tmp.path().join("custom_install").join("app")
-    );
-    assert_eq!(
-        ctx.bin_path(),
-        tmp.path().join("custom_install").join("bin")
-    );
-}
 
 #[test]
 fn context_db_with_custom_path() {

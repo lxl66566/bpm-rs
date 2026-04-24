@@ -25,7 +25,8 @@ temperature: 0
 - 配置与存储：分为 config (用户配置，src/config.rs) 和 db (软件包记录，src/storage/mod.rs)。config 东西不多，主要内容都在 db；db 被设计为支持多种存储后端，不过目前主要使用文件（json 或多种类型）存储。
 - 选择 asset：逻辑放在 architecture-select 文件夹，本质是基于当前的 arch + os 来选择合适的 asset。
 - 下载：使用 trauma 库实现多线程 + 带有进度条的下载。
-- 解压：使用 libarchive (src/installation/unzip.rs) 实现广泛的解压格式支持。解压时还会进行一些特殊逻辑判断，例如单文件、单文件夹等。
+- 解压：尽力支持尽可能多的压缩格式。
+  - 解压后，还会进行一些特殊逻辑判断，例如单文件、单文件夹等。
 - 卸载机制：安装时会记录安装的文件列表，以实现卸载回滚逻辑。
 
 ## Linux 逻辑

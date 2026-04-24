@@ -44,7 +44,7 @@ mod tests {
     #[tokio::test]
     async fn test_download() {
         let tempdir = tempfile::tempdir().unwrap();
-        let mut repo = Repo::new("reqwest_test");
+        let mut repo = Repo::new("download_test");
         repo.asset =
             Some("https://github.com/seanmonstar/reqwest/archive/refs/tags/v0.1.0.zip".to_string());
         let result = download(vec![&repo], tempdir.path()).await;

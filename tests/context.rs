@@ -1,6 +1,5 @@
 use bpm::{context::Context, storage::db::DbOperation};
 
-
 #[test]
 fn context_db_with_custom_path() {
     let tmp = tempfile::tempdir().unwrap();

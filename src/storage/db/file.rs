@@ -55,6 +55,12 @@ mod tests {
     use super::*;
     use crate::storage::Repo;
 
+    fn temp_db_path() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_db.ron");
+        (dir, path)
+    }
+
     #[test]
     fn test_db_basic_operation() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -76,5 +82,21 @@ mod tests {
         assert!(db.get_repo("abd").is_some());
         assert_eq!(db.get_repo_list().len(), 1);
         Ok(())
+    }
+
+    #[test]
+    fn db_persistence() {
+        let (_dir, path) = temp_db_path();
+
+        {
+            let db = Db::create_or_open(&path).unwrap();
+            db.insert_repo(Repo::new("persist-test").by_url("https://github.com/test/repo"))
+                .unwrap();
+        }
+
+        let db2 = Db::create_or_open(&path).unwrap();
+        let found = db2.get_repo("persist-test").unwrap();
+        assert_eq!(found.repo_owner.unwrap(), "test");
+        assert_eq!(found.repo_name.unwrap(), "repo");
     }
 }

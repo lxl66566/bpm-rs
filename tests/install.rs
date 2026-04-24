@@ -24,24 +24,6 @@ fn test_ctx_with_dry_run() -> Context {
         .with_db_path(tempfile::tempdir().unwrap().path().join("db"))
 }
 
-fn create_fake_binary_tree(dir: &std::path::Path, bin_name: &str) {
-    fs::create_dir_all(dir).unwrap();
-    fs::write(dir.join(bin_name), "#!/bin/sh\necho hello").unwrap();
-}
-
-fn create_full_package_tree(dir: &std::path::Path, bin_name: &str) {
-    fs::create_dir_all(dir).unwrap();
-    fs::write(dir.join(bin_name), "binary-content").unwrap();
-
-    let lib_dir = dir.join("lib");
-    fs::create_dir_all(&lib_dir).unwrap();
-    fs::write(lib_dir.join("libfoo.a"), "lib-content").unwrap();
-
-    let share_dir = dir.join("share");
-    fs::create_dir_all(&share_dir).unwrap();
-    fs::write(share_dir.join("data.txt"), "share-content").unwrap();
-}
-
 #[cfg(windows)]
 #[test]
 fn windows_install_moves_files() {

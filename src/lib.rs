@@ -1,4 +1,3 @@
-#![warn(clippy::cargo)]
 #![allow(
     clippy::clone_on_ref_ptr,
     clippy::print_stderr,
@@ -8,8 +7,8 @@
     clippy::module_name_repetitions
 )]
 
-mod cli;
-mod command;
+pub mod cli;
+pub mod command;
 pub mod context;
 pub mod error;
 pub mod installation;

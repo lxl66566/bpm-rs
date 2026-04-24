@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{error::BpmResult, storage::db::DbOperation};
 
@@ -8,6 +8,20 @@ pub struct Context {
     pub quiet: bool,
     install_position: PathBuf,
     db_path: PathBuf,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        let home = home::home_dir().expect("Failed to get home directory");
+        let install_position = home.join("bpm");
+        let db_path = install_position.join("db.json");
+        Self {
+            dry_run: false,
+            quiet: false,
+            install_position,
+            db_path,
+        }
+    }
 }
 
 impl Context {
@@ -40,6 +54,16 @@ impl Context {
     }
 
     #[inline]
+    pub fn install_position(&self) -> &Path {
+        &self.install_position
+    }
+
+    #[inline]
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    #[inline]
     pub fn app_path(&self) -> PathBuf {
         self.install_position.join("app")
     }
@@ -47,18 +71,6 @@ impl Context {
     #[inline]
     pub fn bin_path(&self) -> PathBuf {
         self.install_position.join("bin")
-    }
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        let home = home::home_dir().expect("Failed to get home directory");
-        Self {
-            dry_run: false,
-            quiet: false,
-            install_position: home.join(".bpm"),
-            db_path: home.join(".config").join("bpm").join("db"),
-        }
     }
 }
 

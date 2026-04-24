@@ -6,12 +6,7 @@ use log::{debug, info};
 use reqwest::StatusCode;
 use url::Url;
 
-use crate::{
-    cli::SortParam,
-    error::BpmError,
-    storage::{Repo, RepoList},
-    utils::UrlJoinAll,
-};
+use crate::{cli::SortParam, error::BpmError, storage::Repo, utils::UrlJoinAll};
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
@@ -195,29 +190,6 @@ fn ask_asset_interactive(assets: &[String]) -> Result<String> {
         .find(|a| a.rsplit('/').next().unwrap_or(a) == selected_name)
         .cloned()
         .ok_or_else(|| anyhow!("Selected asset not found"))
-}
-
-pub trait SearchableSequence {
-    async fn search_all(self, quiet: bool, interactive: bool, sort: SortParam) -> Result<RepoList>;
-}
-
-impl SearchableSequence for RepoList {
-    async fn search_all(self, quiet: bool, interactive: bool, sort: SortParam) -> Result<RepoList> {
-        let mut results = Vec::new();
-        for mut repo in self.0 {
-            if repo.url().is_none() {
-                let items = repo.search(sort).await?;
-                if !items.is_empty() {
-                    repo.ask(items, quiet)?;
-                }
-            }
-            if !interactive || repo.asset.is_none() {
-                repo.get_asset(interactive).await?;
-            }
-            results.push(repo);
-        }
-        Ok(RepoList(results))
-    }
 }
 
 #[cfg(test)]

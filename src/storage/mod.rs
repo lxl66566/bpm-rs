@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use log::debug;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
 use crate::utils::{UrlJoinAll, table::Table};
@@ -33,6 +33,7 @@ fn split_full_name(full_name: &str) -> Result<(String, String)> {
 
 #[non_exhaustive]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum Site {
     #[default]
     Github,
@@ -62,6 +63,20 @@ impl fmt::Display for Site {
     }
 }
 
+fn null_to_empty_vec<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    // Attempt to deserialize as Option<Vec<T>>
+    let opt = Option::<Vec<T>>::deserialize(d)?;
+    Ok(opt.unwrap_or_default())
+}
+
+fn is_false(b: &bool) -> bool {
+    !(*b)
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Repo {
@@ -73,13 +88,28 @@ pub struct Repo {
     pub asset: Option<String>,
     pub version: Option<String>,
     pub installed_files: Vec<PathBuf>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_time: Option<std::time::SystemTime>,
+
+    #[serde(default, skip_serializing_if = "is_false")]
     pub prefer_gnu: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
     pub no_pre: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
     pub one_bin: bool,
-    #[serde(default)]
+
+    #[serde(
+        default,
+        deserialize_with = "null_to_empty_vec",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub asset_filter: Vec<String>,
+
     #[cfg(windows)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub is_msi: bool,
 }
 
@@ -112,9 +142,9 @@ impl Repo {
         );
         Self {
             name: name.clone(),
-            bin_name: name,
             ..Default::default()
         }
+        .with_bin_name(name)
     }
 
     pub fn with_bin_name(mut self, bin_name: String) -> Self {
@@ -264,6 +294,9 @@ mod tests {
         assert_eq!(repo.bin_name, "mybin.exe");
         #[cfg(not(windows))]
         assert_eq!(repo.bin_name, "mybin");
+
+        let repo = Repo::new("test").with_bin_name("mybin.exe".to_string());
+        assert_eq!(repo.bin_name, "mybin.exe");
     }
 
     #[test]

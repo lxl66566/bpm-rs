@@ -1,11 +1,11 @@
-use anyhow::Result;
-use log::{error, info};
+use anyhow::{Result, anyhow, ensure};
+use log::{debug, error, info};
 
 use crate::{
     cli::{Cli, SortParam, SubCommand},
     context::Context,
     installation::{Installation, download, unzip},
-    search::{Searchable, SearchableSequence},
+    search::Searchable,
     storage::{Repo, RepoList, db::DbOperation},
 };
 
@@ -56,33 +56,46 @@ async fn cli_install(
     filter: Vec<String>,
     sort: SortParam,
 ) -> Result<()> {
-    if interactive && ctx.quiet {
-        anyhow::bail!("Cannot use both --interactive and --quiet.");
-    }
+    ensure!(
+        !interactive || !ctx.quiet,
+        "Cannot use both --interactive and --quiet."
+    );
+    ensure!(
+        local.is_none() || packages.len() == 1,
+        "Cannot install multiple packages from local."
+    );
 
-    if local.is_some() && packages.len() > 1 {
-        anyhow::bail!("Cannot install multiple packages from local.");
-    }
-
+    #[cfg(unix)]
     if !ctx.dry_run {
-        #[cfg(unix)]
         crate::utils::check_root()?;
     }
 
     let db = ctx.db()?;
-    let mut repo_list = build_repo_list(packages, bin_name, one_bin, prefer_gnu, filter);
+    let repo_list = build_repo_list(packages, bin_name, one_bin, prefer_gnu, filter);
+    debug!("repo_list: {repo_list:?}");
 
-    if local.is_none() {
-        repo_list = repo_list.search_all(ctx.quiet, interactive, sort).await?;
+    // Filter out already installed packages upfront
+    let mut repos: Vec<Repo> = repo_list
+        .0
+        .into_iter()
+        .filter(|repo| {
+            if !ctx.dry_run && db.get_repo(&repo.name).is_some() {
+                info!("{} is already installed, skipping.", repo.name);
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    if repos.is_empty() {
+        return Ok(());
     }
 
-    for mut repo in repo_list.0 {
-        if !ctx.dry_run && db.get_repo(&repo.name).is_some() {
-            info!("{} is already installed, skipping.", repo.name);
-            continue;
-        }
-
-        match install_single(ctx, &mut repo, local.as_deref()).await {
+    // Local install: single package, no parallelism needed
+    if let Some(local_path) = local {
+        let mut repo = repos.into_iter().next().unwrap();
+        match install_single(ctx, &mut repo, Some(&local_path)).await {
             Ok(()) => {
                 if !ctx.dry_run {
                     db.insert_repo(repo)?;
@@ -98,7 +111,99 @@ async fn cli_install(
                 return Err(e);
             }
         }
+        return Ok(());
     }
+
+    // Phase 1: Parallel search for repos that need it
+    let search_indices: Vec<usize> = repos
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.url().is_none())
+        .map(|(i, _)| i)
+        .collect();
+
+    if !search_indices.is_empty() {
+        let mut tasks = tokio::task::JoinSet::new();
+        for &i in &search_indices {
+            let repo = repos[i].clone();
+            tasks.spawn(async move { (i, repo.search(sort).await) });
+        }
+
+        let mut results = Vec::with_capacity(search_indices.len());
+        while let Some(res) = tasks.join_next().await {
+            results.push(res?);
+        }
+
+        // Phase 2: Sequential ask in original order
+        results.sort_by_key(|(i, _)| *i);
+        for (i, search_result) in results {
+            let items = search_result?;
+            if !items.is_empty() {
+                repos[i].ask(items, ctx.quiet)?;
+            }
+        }
+    }
+
+    // Phase 3: Parallel get_asset
+    let asset_indices: Vec<usize> = repos
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| !interactive || r.asset.is_none())
+        .map(|(i, _)| i)
+        .collect();
+
+    if !asset_indices.is_empty() {
+        let mut tasks = tokio::task::JoinSet::new();
+        for &i in &asset_indices {
+            let mut repo = std::mem::take(&mut repos[i]);
+            tasks.spawn(async move {
+                let result = repo.get_asset(interactive).await;
+                (i, repo, result)
+            });
+        }
+
+        while let Some(res) = tasks.join_next().await {
+            let (i, repo, result) = res?;
+            result?;
+            repos[i] = repo;
+        }
+    }
+
+    // Phase 4: Batch download (trauma handles internal parallelism)
+    let download_tmp = tempfile::tempdir()?;
+    let repo_refs: Vec<&Repo> = repos.iter().collect();
+    let downloaded = download::download(repo_refs, download_tmp.path()).await?;
+    ensure!(!downloaded.is_empty(), "No files downloaded.");
+
+    // Phase 5: Unzip and install each repo
+    for mut repo in repos {
+        let file = downloaded
+            .iter()
+            .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(repo.name.as_str()))
+            .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
+
+        let extracted = download_tmp.path().join(format!("{}_extracted", repo.name));
+        let main_path = unzip::unzip(file, extracted)?;
+
+        match repo.install(&main_path, ctx) {
+            Ok(()) => {
+                info!("`{}` installed successfully.", repo.name);
+                if !ctx.dry_run {
+                    db.insert_repo(repo)?;
+                }
+            }
+            Err(e) => {
+                error!("Failed to install `{}`: {e}", repo.name);
+                if !ctx.dry_run {
+                    info!("Restoring...");
+                    let mut repo_for_cleanup = repo.clone();
+                    let _ = repo_for_cleanup.uninstall(ctx);
+                }
+                return Err(e);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -145,9 +250,11 @@ async fn install_single(
         )?
     } else {
         let downloaded = download::download(vec![&*repo], tmp_path).await?;
-        if downloaded.is_empty() {
-            anyhow::bail!("No files downloaded for {}", repo.name);
-        }
+        ensure!(
+            !downloaded.is_empty(),
+            "No files downloaded for {}",
+            repo.name
+        );
         unzip::unzip(&downloaded[0], tmp_path.join("extracted"))?
     };
 
@@ -188,7 +295,7 @@ async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Result<
         packages.len() - failed.len()
     );
     if !failed.is_empty() {
-        info!("Failed: {failed:?}");
+        error!("Failed: {failed:?}");
     }
     Ok(())
 }
@@ -258,9 +365,10 @@ async fn cli_update(
 
 #[cfg(windows)]
 async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Result<()> {
-    if old_name == new_name {
-        anyhow::bail!("Alias name cannot be the same as the original.");
-    }
+    ensure!(
+        old_name != new_name,
+        "Alias name cannot be the same as the original."
+    );
 
     let db = ctx.db()?;
     let bin_path = ctx.bin_path();
@@ -275,9 +383,7 @@ async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Result<
         })
         .collect();
 
-    if files.is_empty() {
-        anyhow::bail!("Script `{old_name}` not found.");
-    }
+    ensure!(!files.is_empty(), "Script `{old_name}` not found.");
 
     let mut count = 0u32;
     let all_repos = db.get_repo_list();

@@ -50,6 +50,10 @@ windows-env = "0.2.0"
 [target."cfg(unix)".dependencies]
 libc = "0.2.186"
 
+[[bin]]
+name = "bpm"
+path = "src/main.rs"
+
 [[test]]
 name = "local_install"
 path = "integration_test/local_install.rs"

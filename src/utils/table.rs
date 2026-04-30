@@ -42,7 +42,7 @@ impl Table {
             Cell::new(repo.name.clone())
                 .add_attribute(Attribute::Bold)
                 .fg(Color::Green),
-            Cell::new(repo.url().expect("url should be valid").to_string()),
+            Cell::new(repo.url().map(|x| x.to_string()).unwrap_or_default()),
             Cell::new(repo.version.clone().unwrap_or_default()),
         ]);
     }

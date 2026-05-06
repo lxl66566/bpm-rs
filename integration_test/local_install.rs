@@ -41,6 +41,9 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
 async fn full_lifecycle_install_then_remove() {
     let env = TestEnv::new();
     let zip_path = env.tmp().join("test-app.zip");
+    #[cfg(windows)]
+    create_test_zip(&zip_path, &[("test-app.exe", b"fake binary content")]);
+    #[cfg(not(windows))]
     create_test_zip(&zip_path, &[("test-app", b"fake binary content")]);
 
     dispatch(install_cli("test-app", &zip_path, false), env.ctx())
@@ -54,12 +57,15 @@ async fn full_lifecycle_install_then_remove() {
 
     let app_dir = env.app_path().join("test-app");
     assert!(app_dir.exists());
+    #[cfg(windows)]
+    assert!(app_dir.join("test-app.exe").exists());
+    #[cfg(not(windows))]
     assert!(app_dir.join("test-app").exists());
 
     #[cfg(windows)]
     {
-        assert!(env.bin_path().join("test-app.cmd").exists());
-        assert!(env.bin_path().join("test-app.lnk").exists());
+        assert!(env.bin_path().join("test-app.exe").exists());
+        assert!(env.bin_path().join("test-app.shim").exists());
     }
 
     dispatch(remove_cli("test-app", false), env.ctx())
@@ -76,6 +82,16 @@ async fn full_lifecycle_install_then_remove() {
 async fn install_from_zip_with_wrapping_directory() {
     let env = TestEnv::new();
     let zip_path = env.tmp().join("wrapped.zip");
+    #[cfg(windows)]
+    create_test_zip(
+        &zip_path,
+        &[
+            ("test-app-1.0/test-app.exe", b"binary"),
+            ("test-app-1.0/README.md", b"readme"),
+            ("test-app-1.0/config.toml", b"config"),
+        ],
+    );
+    #[cfg(not(windows))]
     create_test_zip(
         &zip_path,
         &[
@@ -90,13 +106,17 @@ async fn install_from_zip_with_wrapping_directory() {
         .unwrap();
 
     let app_dir = env.app_path().join("test-app");
+    #[cfg(windows)]
+    assert!(app_dir.join("test-app.exe").exists());
+    #[cfg(not(windows))]
     assert!(app_dir.join("test-app").exists());
     assert!(app_dir.join("README.md").exists());
     assert!(app_dir.join("config.toml").exists());
 
     #[cfg(windows)]
     {
-        assert!(env.bin_path().join("test-app.cmd").exists());
+        assert!(env.bin_path().join("test-app.exe").exists());
+        assert!(env.bin_path().join("test-app.shim").exists());
     }
 
     assert!(env.db().get_repo("test-app").is_some());

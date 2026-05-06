@@ -43,6 +43,9 @@ windows-env         = "0.2.0"
 zip                 = "8"
 zstd                = "0.13"
 
+[build-dependencies]
+zstd = "0.13"
+
 [target.'cfg(windows)'.dependencies]
 mslnk       = "0.1.8"
 windows-env = "0.2.0"

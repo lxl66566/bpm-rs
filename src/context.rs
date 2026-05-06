@@ -72,6 +72,12 @@ impl Context {
     pub fn bin_path(&self) -> PathBuf {
         self.install_position.join("bin")
     }
+
+    #[cfg(windows)]
+    #[inline]
+    pub fn shim_exe(&self) -> PathBuf {
+        self.install_position.join("shim.exe")
+    }
 }
 
 #[cfg(test)]

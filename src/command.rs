@@ -395,7 +395,7 @@ async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Result<
             }
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            if stem == old_name && (ext == "lnk" || ext == "cmd" || ext.is_empty()) {
+            if stem == old_name && (ext == "exe" || ext == "shim" || ext.is_empty()) {
                 let new_path = path.with_file_name(format!("{new_name}.{}", ext));
                 std::fs::rename(path, &new_path)?;
                 count += 1;

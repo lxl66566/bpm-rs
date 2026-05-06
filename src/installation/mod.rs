@@ -377,7 +377,11 @@ mod unix_impl {
 
 #[cfg(windows)]
 mod windows_impl {
-    use std::{fs, path::Path};
+    use std::{
+        fs::{self, File},
+        io::Cursor,
+        path::{Path, PathBuf},
+    };
 
     use anyhow::Result;
     use log::{debug, info, warn};
@@ -436,7 +440,6 @@ mod windows_impl {
 
     impl WindowsBinaryLinks for Repo {
         fn create_binary_links(&mut self, ctx: &Context) -> Result<()> {
-            use mslnk::ShellLink;
             use path_absolutize::Absolutize;
 
             use crate::utils::path::{windows_path_to_windows_bash, windows_path_to_wsl};
@@ -453,48 +456,60 @@ mod windows_impl {
                 return Ok(());
             }
 
-            for bin_file in &bin_files {
-                let stem = bin_file.file_stem().unwrap().to_string_lossy().to_string();
-                let base = bin_path.join(&stem);
+            if !ctx.dry_run {
+                let base_shim = ensure_base_shim(ctx)?;
 
-                let lnk_path = base.with_extension("lnk");
-                let cmd_path = base.with_extension("cmd");
-                let sh_path = base.clone();
+                for bin_file in &bin_files {
+                    let stem = bin_file.file_stem().unwrap().to_string_lossy().to_string();
+                    let base = bin_path.join(&stem);
 
-                if ctx.dry_run {
-                    continue;
+                    let exe_path = base.with_extension("exe");
+                    let shim_cfg_path = base.with_extension("shim");
+                    let sh_path = base.clone();
+
+                    for p in [&exe_path, &shim_cfg_path, &sh_path] {
+                        let _ = fs::remove_file(p);
+                    }
+
+                    fs::hard_link(&base_shim, &exe_path)?;
+                    debug!("create exe shim: {exe_path:?}");
+                    self.installed_files.push(exe_path);
+
+                    let target = bin_file.absolutize()?;
+                    fs::write(&shim_cfg_path, format!("path = {}\n", target.display()))?;
+                    debug!("create shim config: {shim_cfg_path:?}");
+                    self.installed_files.push(shim_cfg_path);
+
+                    fs::write(
+                        &sh_path,
+                        format!(
+                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
+                            windows_path_to_windows_bash(bin_file),
+                            windows_path_to_wsl(bin_file)
+                        ),
+                    )?;
+                    debug!("create sh: {bin_file:?} -> {sh_path:?}");
+                    self.installed_files.push(sh_path);
                 }
-
-                for p in [&lnk_path, &cmd_path, &sh_path] {
-                    let _ = fs::remove_file(p);
-                }
-
-                ShellLink::new(bin_file)?.create_lnk(&lnk_path)?;
-                debug!("create lnk: {bin_file:?} -> {lnk_path:?}");
-                self.installed_files.push(lnk_path);
-
-                fs::write(
-                    &cmd_path,
-                    format!("@echo off\r\n\"{}\" %*", bin_file.absolutize()?.display()),
-                )?;
-                debug!("create cmd: {bin_file:?} -> {cmd_path:?}");
-                self.installed_files.push(cmd_path);
-
-                fs::write(
-                    &sh_path,
-                    format!(
-                        "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
-                        windows_path_to_windows_bash(bin_file),
-                        windows_path_to_wsl(bin_file)
-                    ),
-                )?;
-                debug!("create sh: {bin_file:?} -> {sh_path:?}");
-                self.installed_files.push(sh_path);
             }
 
             ensure_windows_path(&bin_path);
             Ok(())
         }
+    }
+
+    fn ensure_base_shim(ctx: &Context) -> Result<PathBuf> {
+        let shim_path = ctx.shim_exe();
+        if shim_path.exists() {
+            return Ok(shim_path);
+        }
+
+        let compressed = include_bytes!(concat!(env!("OUT_DIR"), "/bpm-shim.exe.zst"));
+        let mut decoder = zstd::Decoder::new(Cursor::new(compressed))?;
+        let mut output = File::create(&shim_path)?;
+        std::io::copy(&mut decoder, &mut output)?;
+        info!("extracted base shim to {}", shim_path.display());
+        Ok(shim_path)
     }
 
     fn ensure_windows_path(bin_path: &Path) {

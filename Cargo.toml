@@ -24,10 +24,10 @@ lz4_flex            = "0.13"
 lzma-rust2          = "0.16"
 path-absolutize     = "3"
 pretty_env_logger   = "0.5"
-reqwest             = { version = "0", features = ["rustls", "json"] }
+reqwest             = { version = "0.13", features = ["rustls", "json"] }
 serde               = { version = "1", features = ["derive"] }
 serde_json          = "1"
-sevenz-rust2        = { version = "0.20" }
+sevenz-rust2        = { version = "0.21" }
 snap                = "1"
 strum_macros        = "0.28"
 tap                 = "1"
@@ -35,12 +35,12 @@ tar                 = "0.4"
 tempfile            = "3"
 terminal-menu       = "3.0"
 thiserror           = "2"
-tokio               = { version = "1.45", features = ["rt", "rt-multi-thread", "macros"] }
+tokio               = { version = "1.52", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = { version = "2", features = ["rustls"] }
 url                 = { version = "2", features = ["serde"] }
 walkdir             = "2.4"
 windows-env         = "0.2.0"
-zip                 = "8"
+zip                 = "8.6"
 zstd                = "0.13"
 
 [build-dependencies]

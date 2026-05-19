@@ -385,6 +385,7 @@ mod windows_impl {
 
     use anyhow::Result;
     use log::{debug, info, warn};
+    use walkdir::WalkDir;
 
     use super::{check_and_install_msi, move_dir_content};
     use crate::{
@@ -450,7 +451,21 @@ mod windows_impl {
             let bin_path = ctx.bin_path();
             bin_path.create_dir_if_not_exist()?;
 
-            let bin_files = app_dir.glob_name(&self.bin_name);
+            let mut bin_files = app_dir.glob_name(&self.bin_name);
+            if bin_files.is_empty() {
+                // 兜底：扫描所有 .exe 文件
+                bin_files = WalkDir::new(&app_dir)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .filter(|e| {
+                        e.path()
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+                    })
+                    .map(|e| e.path().to_path_buf())
+                    .collect();
+            }
             if bin_files.is_empty() {
                 warn!("no binary file found in {app_dir:?}, skip creating links.");
                 return Ok(());

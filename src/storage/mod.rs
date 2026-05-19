@@ -214,11 +214,14 @@ impl From<Url> for Repo {
     fn from(value: Url) -> Self {
         let fullname = value.path();
         let res = split_full_name(fullname).expect("construct repo from invalid URL.");
-        Self::default().tap_mut(|repo| {
-            repo.name = res.1.clone();
-            repo.repo_name = Some(res.1);
-            repo.repo_owner = Some(res.0);
-        })
+        let name = res.1.clone();
+        Self::default()
+            .tap_mut(|r| {
+                r.name = name.clone();
+                r.repo_name = Some(res.1);
+                r.repo_owner = Some(res.0);
+            })
+            .with_bin_name(name)
     }
 }
 

@@ -301,6 +301,20 @@ pub fn unzip(src: impl Into<PathBuf>, to: impl AsRef<Path>) -> Result<PathBuf> {
     let to = to.as_ref();
     let src = src.into();
 
+    #[cfg(windows)]
+    {
+        let is_binary = src
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("msi"));
+        if is_binary {
+            fs::create_dir_all(to)?;
+            fs::copy(&src, to.join(src.file_name().unwrap()))?;
+            fs::remove_file(&src)?;
+            return Ok(to.to_path_buf());
+        }
+    }
+
     let format = ArchiveFormat::from_path(&src)
         .with_context(|| format!("Unsupported archive format: {}", src.display()))?;
 

@@ -19,6 +19,7 @@ fn install_cli(pkg: &str, local: &std::path::Path) -> Cli {
             dry_run: false,
             interactive: false,
             filter: vec![],
+            name: None,
             sort: SortParam::default(),
         },
         config: None,

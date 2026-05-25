@@ -21,6 +21,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
             dry_run,
             interactive,
             filter,
+            name,
             sort,
         } => {
             cli_install(
@@ -32,6 +33,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
                 prefer_gnu,
                 interactive,
                 filter,
+                name,
                 sort,
             )
             .await
@@ -54,6 +56,7 @@ async fn cli_install(
     prefer_gnu: bool,
     interactive: bool,
     filter: Vec<String>,
+    name: Option<String>,
     sort: SortParam,
 ) -> Result<()> {
     ensure!(
@@ -64,6 +67,10 @@ async fn cli_install(
         local.is_none() || packages.len() == 1,
         "Cannot install multiple packages from local."
     );
+    ensure!(
+        name.is_none() || packages.len() == 1,
+        "Cannot use --name with multiple packages."
+    );
 
     #[cfg(unix)]
     if !ctx.dry_run {
@@ -71,7 +78,7 @@ async fn cli_install(
     }
 
     let db = ctx.db()?;
-    let repo_list = build_repo_list(packages, bin_name, one_bin, prefer_gnu, filter);
+    let repo_list = build_repo_list(packages, bin_name, one_bin, prefer_gnu, filter, name);
     debug!("repo_list: {repo_list:?}");
 
     // Filter out already installed packages upfront
@@ -213,11 +220,15 @@ fn build_repo_list(
     one_bin: bool,
     prefer_gnu: bool,
     filter: Vec<String>,
+    name: Option<String>,
 ) -> RepoList {
     packages
         .into_iter()
         .map(|p| {
             let mut repo = Repo::from(p.as_str());
+            if let Some(ref n) = name {
+                repo.name.clone_from(n);
+            }
             if let Some(ref bn) = bin_name {
                 repo = repo.with_bin_name(bn.clone());
             }

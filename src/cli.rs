@@ -18,6 +18,8 @@ pub enum SubCommand {
         #[clap(required = true)]
         packages: Vec<String>,
         #[arg(short, long)]
+        name: Option<String>,
+        #[arg(short, long)]
         bin_name: Option<String>,
         #[arg(
             short,

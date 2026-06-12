@@ -85,6 +85,9 @@ impl Searchable for Repo {
         let select_menu = menu(menu_items);
         run(&select_menu);
         let temp = mut_menu(&select_menu);
+        if temp.canceled() {
+            bail!("User cancelled the repo selection");
+        }
         let selected = temp.selected_item_name();
         info!("selected repo: {selected}");
         self.set_by_url(selected);
@@ -197,6 +200,9 @@ fn ask_asset_interactive(assets: &[String]) -> Result<String> {
     let m = menu(items);
     run(&m);
     let binding = mut_menu(&m);
+    if binding.canceled() {
+        bail!("User cancelled the asset selection");
+    }
     let selected_name = binding.selected_item_name();
     assets
         .iter()

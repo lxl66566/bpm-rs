@@ -1,9 +1,15 @@
 [package]
-edition = "2024"
-name    = "bpm"
-version = "0.1.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors     = ["lxl66566 <lxl66566@gmail.com>"]
+categories  = ["command-line-utilities"]
+description = "A binary package manager based on GitHub Releases"
+edition     = "2024"
+homepage    = "https://github.com/lxl66566/bpm-rs"
+keywords    = ["binary", "package-manager", "github-releases"]
+license     = "MIT"
+name        = "bpm"
+readme      = "README.md"
+repository  = "https://github.com/lxl66566/bpm-rs"
+version     = "0.1.0"
 
 [dependencies]
 anyhow              = "1.0"

@@ -40,6 +40,7 @@ bpm -h                # 查看更多帮助
 ## 原理解释
 
 - 选择 asset：bpm 有一套较为复杂的 assets 匹配机制，一般可以筛选出最佳的 asset 作为安装目标。如果无法筛选到合适 asset，您可以使用 `--interactive` 来强制选择 asset。
+- binary 匹配逻辑：解压后，bpm 按以下顺序查找目标 bin 文件：(1) 如果压缩包内只有一个文件，直接使用该文件；(2) 否则递归扫描所有文件，匹配 `bin_name`（默认为包名，可通过 `--bin-name` / `-b` 覆盖，在 Windows 上自动补 `.exe` 后缀）；(3) 在 Windows 上若未匹配到，则回退使用所有 `.exe` 文件。 (4) `--one-bin` 用于强制单文件模式（Linux only，只安装第一个匹配到的 binary）。
 
 ### Linux
 

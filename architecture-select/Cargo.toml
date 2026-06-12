@@ -1,5 +1,5 @@
 [package]
-authors     = ["Absolutex <lxl66566@gmail.com>"]
+authors     = ["lxl66566 <lxl66566@gmail.com>"]
 categories  = ["value-formatting"]
 description = "Select the best match item based on platform and architecture. Used for github assets selection."
 edition     = "2024"

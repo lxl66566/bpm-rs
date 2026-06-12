@@ -40,6 +40,7 @@ bpm -h                # show more help
 ## How it works
 
 - Asset selection: bpm has a relatively complex asset matching mechanism that generally selects the best asset as the installation target. If no suitable asset can be found, you can use `--interactive` to force asset selection.
+- Binary matching logic: After decompression, bpm searches for the target binary file in the following order: (1) If there is only one file in the archive, use that file directly; (2) Otherwise, recursively scan all files to match `bin_name` (defaults to the package name, can be overridden by `--bin-name` / `-b`, and automatically appends the `.exe` suffix on Windows); (3) On Windows, if no match is found, fall back to using all `.exe` files. (4) `--one-bin` is used to enforce single-file mode (Linux only, installs only the first matched binary).
 
 ### Linux
 

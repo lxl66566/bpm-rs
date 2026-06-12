@@ -7,7 +7,6 @@ use bpm::{
 };
 use common::*;
 
-/// Dry-run install should not persist anything to the db or create real files.
 #[tokio::test]
 async fn dry_run_install_does_not_persist() {
     let env = TestEnv::new();
@@ -48,8 +47,6 @@ async fn dry_run_install_does_not_persist() {
     }
 }
 
-/// Dry-run context in remove skips file deletion but still removes the db
-/// entry, because cli_remove always calls db.remove_repo.
 #[tokio::test]
 async fn dry_run_context_remove_keeps_files() {
     let env = TestEnv::new();

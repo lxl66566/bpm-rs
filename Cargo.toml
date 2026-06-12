@@ -56,19 +56,6 @@ libc = "0.2.186"
 name = "bpm"
 path = "src/main.rs"
 
-[[test]]
-name = "local_install"
-path = "integration_test/local_install.rs"
-
-[[test]]
-name = "remove"
-path = "integration_test/remove.rs"
-
-[[test]]
-name = "dry_run"
-path = "integration_test/dry_run.rs"
-
-
 [profile.release]
 lto       = true
 opt-level = "s"

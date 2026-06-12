@@ -35,6 +35,14 @@ impl TestEnv {
             .with_db_path(&self.db_path)
     }
 
+    pub fn ctx_with_dry_run(&self) -> bpm::context::Context {
+        self.ctx().with_dry_run(true)
+    }
+
+    pub fn install_pos(&self) -> &Path {
+        &self.install_pos
+    }
+
     pub fn app_path(&self) -> &Path {
         &self.app_path
     }
@@ -56,6 +64,7 @@ impl TestEnv {
     }
 }
 
+#[allow(dead_code)]
 pub fn create_test_zip(zip_path: &Path, files: &[(&str, &[u8])]) {
     let file = File::create(zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);

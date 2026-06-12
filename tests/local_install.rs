@@ -37,8 +37,6 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
     }
 }
 
-/// Full lifecycle: install from a local zip, verify db + filesystem,
-/// then remove and verify everything is cleaned up.
 #[tokio::test]
 async fn full_lifecycle_install_then_remove() {
     let env = TestEnv::new();
@@ -78,8 +76,6 @@ async fn full_lifecycle_install_then_remove() {
     assert!(!app_dir.exists());
 }
 
-/// Install a zip where the content is wrapped inside a single top-level
-/// directory. This tests the `only_one_file_in_dir` unwrap logic in `unzip`.
 #[tokio::test]
 async fn install_from_zip_with_wrapping_directory() {
     let env = TestEnv::new();
@@ -130,7 +126,6 @@ async fn install_from_zip_with_wrapping_directory() {
     assert!(!app_dir.exists());
 }
 
-/// Installing a package that is already in the db should skip without error.
 #[tokio::test]
 async fn install_duplicate_package_is_skipped() {
     let env = TestEnv::new();
@@ -163,7 +158,6 @@ async fn install_duplicate_package_is_skipped() {
         .unwrap();
 }
 
-/// Installing multiple packages with --local is not allowed (bpm rejects it).
 #[tokio::test]
 async fn install_multiple_local_packages_fails() {
     let env = TestEnv::new();

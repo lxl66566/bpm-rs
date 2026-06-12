@@ -37,7 +37,6 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
     }
 }
 
-/// Soft remove should delete the db entry but leave installed files on disk.
 #[tokio::test]
 async fn soft_remove_keeps_files() {
     let env = TestEnv::new();
@@ -65,7 +64,6 @@ async fn soft_remove_keeps_files() {
     );
 }
 
-/// Removing a package that was never installed should not error.
 #[tokio::test]
 async fn remove_non_existent_package_succeeds() {
     let env = TestEnv::new();
@@ -77,8 +75,6 @@ async fn remove_non_existent_package_succeeds() {
     assert!(env.db().get_repo("ghost-pkg").is_none());
 }
 
-/// Removing multiple packages where some exist and some don't should succeed
-/// and only remove the ones that exist.
 #[tokio::test]
 async fn remove_mixed_packages() {
     let env = TestEnv::new();

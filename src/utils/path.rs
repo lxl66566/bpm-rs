@@ -28,7 +28,7 @@ impl<P: AsRef<Path>> PathExt for P {
         // 使用 walkdir 库，避免手写递归导致栈溢出，且过滤更优雅
         WalkDir::new(self)
             .into_iter()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.file_type().is_file()) // 只保留文件
             .filter(|e| e.file_name() == pattern) // 匹配文件名
             .map(|e| e.path().to_path_buf())
@@ -91,9 +91,9 @@ fn extract_windows_drive_and_relative(path: &Path) -> (char, String) {
 pub fn windows_path_to_windows_bash<P: AsRef<Path>>(p: P) -> String {
     let (drive, relative) = extract_windows_drive_and_relative(p.as_ref());
     if relative.is_empty() {
-        format!("/{}", drive)
+        format!("/{drive}")
     } else {
-        format!("/{}/{}", drive, relative)
+        format!("/{drive}/{relative}")
     }
 }
 
@@ -105,9 +105,9 @@ pub fn windows_path_to_windows_bash<P: AsRef<Path>>(p: P) -> String {
 pub fn windows_path_to_wsl<P: AsRef<Path>>(p: P) -> String {
     let (drive, relative) = extract_windows_drive_and_relative(p.as_ref());
     if relative.is_empty() {
-        format!("/mnt/{}", drive)
+        format!("/mnt/{drive}")
     } else {
-        format!("/mnt/{}/{}", drive, relative)
+        format!("/mnt/{drive}/{relative}")
     }
 }
 

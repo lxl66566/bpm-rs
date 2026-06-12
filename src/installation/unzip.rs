@@ -43,6 +43,8 @@ impl ArchiveFormat {
         Self::from_filename(&filename)
     }
 
+    // filename has been lowercased
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
     fn from_filename(filename: &str) -> Option<Self> {
         let filename = filename.to_ascii_lowercase();
         let filename = filename.as_str();
@@ -89,7 +91,7 @@ impl ArchiveFormat {
         None
     }
 
-    fn is_archive(&self) -> bool {
+    fn is_archive(self) -> bool {
         matches!(
             self,
             Self::Tar

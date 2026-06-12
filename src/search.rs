@@ -3,6 +3,7 @@ use std::sync::LazyLock as Lazy;
 use anyhow::{Result, anyhow, bail};
 use colored::Colorize;
 use log::{debug, info};
+use terminal_menu::{button, label, menu, mut_menu, run};
 use url::Url;
 
 use crate::{cli::SortParam, error::BpmError, storage::Repo, utils::UrlJoinAll};
@@ -73,7 +74,6 @@ impl Searchable for Repo {
             return Ok(());
         }
 
-        use terminal_menu::{button, label, menu, mut_menu, run};
         let mut menu_items = vec![label(
             "Please select the repo you want to install:"
                 .bold()
@@ -152,13 +152,13 @@ impl Searchable for Repo {
             .filter_map(|a| a["browser_download_url"].as_str().map(String::from))
             .collect();
 
-        let filtered = if !self.asset_filter.is_empty() {
+        let filtered = if self.asset_filter.is_empty() {
+            assets
+        } else {
             assets
                 .into_iter()
                 .filter(|a| self.asset_filter.iter().all(|f| a.contains(f)))
                 .collect::<Vec<_>>()
-        } else {
-            assets
         };
 
         let selected = architecture_select::select(filtered);

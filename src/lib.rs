@@ -1,10 +1,12 @@
+#![warn(clippy::pedantic)]
 #![allow(
-    clippy::clone_on_ref_ptr,
-    clippy::print_stderr,
-    clippy::print_stdout,
     clippy::missing_docs_in_private_items,
-    clippy::struct_field_names,
-    clippy::module_name_repetitions
+    clippy::missing_panics_doc,
+    clippy::missing_safety_doc,
+    clippy::missing_errors_doc,
+    clippy::assigning_clones,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_lines
 )]
 
 pub mod cli;
@@ -17,14 +19,48 @@ pub mod storage;
 pub mod utils;
 
 use anyhow::Result;
-use clap::Parser;
-use cli::Cli;
-use context::Context;
-use utils::log_init;
 
-pub async fn run() -> Result<()> {
-    log_init();
-    let cli = Cli::parse();
-    let ctx = Context::new();
-    command::dispatch(cli, ctx).await
+use crate::{
+    cli::{Cli, SubCommand},
+    command::{cli_alias, cli_info, cli_install, cli_remove, cli_update},
+    context::Context,
+};
+
+pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
+    match cli.command {
+        SubCommand::Install {
+            packages,
+            bin_name,
+            local,
+            quiet,
+            one_bin,
+            prefer_musl,
+            dry_run,
+            interactive,
+            filter,
+            name,
+            pre_release,
+            sort,
+        } => {
+            cli_install(
+                &ctx.with_dry_run(dry_run).with_quiet(quiet),
+                packages,
+                bin_name,
+                local,
+                one_bin,
+                prefer_musl,
+                interactive,
+                filter,
+                name,
+                pre_release,
+                sort,
+            )
+            .await
+        }
+        SubCommand::Remove { packages, soft } => cli_remove(&ctx, packages, soft).await,
+        SubCommand::Update { packages, local } => cli_update(&ctx, packages, local).await,
+        #[cfg(windows)]
+        SubCommand::Alias { new_name, old_name } => cli_alias(&ctx, old_name, new_name).await,
+        SubCommand::Info { packages } => cli_info(&ctx, packages).await,
+    }
 }

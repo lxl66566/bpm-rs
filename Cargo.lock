@@ -164,6 +164,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "bin-package-manager"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "architecture-select",
+ "brotli",
+ "bzip2",
+ "bzip3",
+ "clap",
+ "colored",
+ "comfy-table",
+ "config-file2",
+ "derive_more",
+ "flate2",
+ "flexi_logger",
+ "fs_extra",
+ "home",
+ "libc",
+ "log",
+ "lz4_flex",
+ "lzma-rust2",
+ "path-absolutize",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sevenz-rust2",
+ "snap",
+ "strum_macros",
+ "tap",
+ "tar",
+ "tempfile",
+ "terminal-menu",
+ "thiserror 2.0.18",
+ "tokio",
+ "trauma",
+ "url",
+ "walkdir",
+ "windows-env",
+ "zip",
+ "zstd",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -209,49 +252,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "710f1dd022ef4e93f8a438b4ba958de7f64308434fa6a87104481645cc30068b"
 dependencies = [
  "hybrid-array",
-]
-
-[[package]]
-name = "bpm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "architecture-select",
- "brotli",
- "bzip2",
- "bzip3",
- "clap",
- "colored",
- "comfy-table",
- "config-file2",
- "derive_more",
- "flate2",
- "flexi_logger",
- "fs_extra",
- "home",
- "libc",
- "log",
- "lz4_flex",
- "lzma-rust2",
- "path-absolutize",
- "reqwest",
- "serde",
- "serde_json",
- "sevenz-rust2",
- "snap",
- "strum_macros",
- "tap",
- "tar",
- "tempfile",
- "terminal-menu",
- "thiserror 2.0.18",
- "tokio",
- "trauma",
- "url",
- "walkdir",
- "windows-env",
- "zip",
- "zstd",
 ]
 
 [[package]]

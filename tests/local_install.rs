@@ -1,8 +1,8 @@
 mod common;
 
-use bpm::{
+use bin_package_manager::{
     cli::{Cli, SortParam, SubCommand},
-    command::dispatch,
+    dispatch,
     storage::db::DbOperation,
 };
 use common::*;

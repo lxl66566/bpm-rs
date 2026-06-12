@@ -40,6 +40,7 @@ pub enum Site {
 }
 
 impl Site {
+    #[must_use]
     pub fn base(&self) -> Url {
         let url = match self {
             Self::Github => "https://github.com",
@@ -47,6 +48,7 @@ impl Site {
         Url::parse(url).expect("hardcoded URL should be valid")
     }
 
+    #[must_use]
     pub fn api_base(&self) -> Url {
         let url = match self {
             Self::Github => "https://api.github.com",
@@ -73,10 +75,12 @@ where
     Ok(opt.unwrap_or_default())
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(b: &bool) -> bool {
     !(*b)
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_true(b: &bool) -> bool {
     *b
 }
@@ -148,6 +152,7 @@ impl fmt::Display for Repo {
 }
 
 impl Repo {
+    #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
         #[cfg(windows)]
@@ -162,6 +167,7 @@ impl Repo {
         .with_bin_name(name)
     }
 
+    #[must_use]
     pub fn with_bin_name(mut self, bin_name: String) -> Self {
         #[cfg(windows)]
         {
@@ -181,6 +187,7 @@ impl Repo {
         self
     }
 
+    #[must_use]
     pub fn url(&self) -> Option<Url> {
         let owner = self.repo_owner.as_deref()?;
         let repo_name = self.repo_name.as_deref()?;
@@ -213,11 +220,13 @@ impl Repo {
         self.set_by_fullname(full_name).unwrap();
     }
 
+    #[must_use]
     pub fn by_url(mut self, url: &str) -> Self {
         self.set_by_url(url);
         self
     }
 
+    #[must_use]
     pub fn by_fullname(mut self, full_name: &str) -> Self {
         self.set_by_fullname(full_name).unwrap();
         self

@@ -2,7 +2,8 @@ mod common;
 
 use std::path::PathBuf;
 
-use bpm::{
+use bin_package_manager::{
+    context::Context,
     installation::{Installation, only_one_file_in_dir},
     storage::{Repo, db::DbOperation},
 };
@@ -115,7 +116,7 @@ fn only_one_file_empty() {
 #[test]
 fn install_and_uninstall_roundtrip_db() {
     let base = tempfile::tempdir().unwrap();
-    let ctx = bpm::context::Context::new()
+    let ctx = Context::new()
         .with_install_position(base.path().join("bpm"))
         .with_db_path(base.path().join("db.ron"));
 

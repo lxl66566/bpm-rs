@@ -23,7 +23,11 @@ pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<Pa
 // 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
 fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
-        info!("Dry run: moving contents from {src_dir:?} to {dst_dir:?}");
+        info!(
+            "Dry run: moving contents from `{:?}` to `{:?}`",
+            src_dir.display(),
+            dst_dir.display()
+        );
         return Ok(());
     }
 
@@ -34,7 +38,11 @@ fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()>
 
     // move_dir 会自动处理同磁盘 rename 和跨磁盘 copy+delete
     fs_extra::dir::move_dir(src_dir, dst_dir, &options)?;
-    info!("Moved contents: {src_dir:?} -> {dst_dir:?}");
+    info!(
+        "Moved contents: `{:?}` -> `{:?}`",
+        src_dir.display(),
+        dst_dir.display()
+    );
     Ok(())
 }
 
@@ -419,7 +427,7 @@ mod windows_impl {
         fn uninstall(&mut self, ctx: &Context) -> Result<()> {
             if ctx.dry_run {
                 for file in &self.installed_files {
-                    info!("dry run: Remove file: {file:?}");
+                    info!("dry run: Remove file: {:?}", file.display());
                 }
                 return Ok(());
             }
@@ -456,7 +464,7 @@ mod windows_impl {
                 // 兜底：扫描所有 .exe 文件
                 bin_files = WalkDir::new(&app_dir)
                     .into_iter()
-                    .filter_map(|e| e.ok())
+                    .filter_map(std::result::Result::ok)
                     .filter(|e| e.file_type().is_file())
                     .filter(|e| {
                         e.path()
@@ -467,7 +475,10 @@ mod windows_impl {
                     .collect();
             }
             if bin_files.is_empty() {
-                warn!("no binary file found in {app_dir:?}, skip creating links.");
+                warn!(
+                    "no binary file found in `{:?}`, skip creating links.",
+                    app_dir.display()
+                );
                 return Ok(());
             }
 
@@ -487,12 +498,12 @@ mod windows_impl {
                     }
 
                     fs::hard_link(&base_shim, &exe_path)?;
-                    debug!("create exe shim: {exe_path:?}");
+                    debug!("create exe shim: {:?}", exe_path.display());
                     self.installed_files.push(exe_path);
 
                     let target = bin_file.absolutize()?;
                     fs::write(&shim_cfg_path, format!("path = {}\n", target.display()))?;
-                    debug!("create shim config: {shim_cfg_path:?}");
+                    debug!("create shim config: {:?}", shim_cfg_path.display());
                     self.installed_files.push(shim_cfg_path);
 
                     fs::write(
@@ -503,7 +514,11 @@ mod windows_impl {
                             windows_path_to_wsl(bin_file)
                         ),
                     )?;
-                    debug!("create sh: {bin_file:?} -> {sh_path:?}");
+                    debug!(
+                        "create sh: `{:?}` -> `{:?}`",
+                        bin_file.display(),
+                        sh_path.display()
+                    );
                     self.installed_files.push(sh_path);
                 }
             }
@@ -535,8 +550,8 @@ mod windows_impl {
             return;
         }
         match windows_env::append("PATH", &bin_str) {
-            Ok(_) => {
-                info!("{bin_str} added to PATH. You may need to restart the terminal to apply.")
+            Ok(()) => {
+                info!("{bin_str} added to PATH. You may need to restart the terminal to apply.");
             }
             Err(e) => warn!("Failed to add {bin_str} to PATH: {e}"),
         }

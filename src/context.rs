@@ -25,25 +25,30 @@ impl Default for Context {
 }
 
 impl Context {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 
+    #[must_use]
     pub fn with_quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
         self
     }
 
+    #[must_use]
     pub fn with_install_position(mut self, path: impl Into<PathBuf>) -> Self {
         self.install_position = path.into();
         self
     }
 
+    #[must_use]
     pub fn with_db_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.db_path = path.into();
         self
@@ -54,27 +59,32 @@ impl Context {
     }
 
     #[inline]
+    #[must_use]
     pub fn install_position(&self) -> &Path {
         &self.install_position
     }
 
     #[inline]
+    #[must_use]
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
 
     #[inline]
+    #[must_use]
     pub fn app_path(&self) -> PathBuf {
         self.install_position.join("app")
     }
 
     #[inline]
+    #[must_use]
     pub fn bin_path(&self) -> PathBuf {
         self.install_position.join("bin")
     }
 
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn shim_exe(&self) -> PathBuf {
         self.install_position.join("shim.exe")
     }

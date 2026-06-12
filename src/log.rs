@@ -46,8 +46,3 @@ fn colored_level(level: log::Level) -> colored::ColoredString {
         log::Level::Trace => format!("{:5}", "TRACE").magenta(),
     }
 }
-
-#[inline]
-pub fn set_quiet_log() {
-    log::set_max_level(log::LevelFilter::Warn);
-}

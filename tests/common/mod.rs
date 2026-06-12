@@ -4,7 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bpm::storage::db::DbOperation;
+use bin_package_manager::{
+    context::Context,
+    storage::db::{Db, DbOperation},
+};
 
 #[allow(dead_code)]
 pub struct TestEnv {
@@ -29,13 +32,13 @@ impl TestEnv {
         }
     }
 
-    pub fn ctx(&self) -> bpm::context::Context {
-        bpm::context::Context::new()
+    pub fn ctx(&self) -> Context {
+        Context::new()
             .with_install_position(&self.install_pos)
             .with_db_path(&self.db_path)
     }
 
-    pub fn ctx_with_dry_run(&self) -> bpm::context::Context {
+    pub fn ctx_with_dry_run(&self) -> Context {
         self.ctx().with_dry_run(true)
     }
 
@@ -59,8 +62,8 @@ impl TestEnv {
         self._guard.path()
     }
 
-    pub fn db(&self) -> bpm::storage::db::Db {
-        bpm::storage::db::Db::create_or_open(self.db_path()).unwrap()
+    pub fn db(&self) -> Db {
+        Db::create_or_open(self.db_path()).unwrap()
     }
 }
 

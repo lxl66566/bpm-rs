@@ -41,9 +41,10 @@ pub enum SubCommand {
         /// Only install the matched binary, skip other files (Linux only)
         #[arg(long)]
         one_bin: bool,
-        /// Prefer GNU builds over musl when selecting assets
+        /// Prefer musl builds over gnu when selecting assets (default: prefer
+        /// gnu)
         #[arg(long)]
-        prefer_gnu: bool,
+        prefer_musl: bool,
         /// Simulate the installation without making any changes
         #[arg(short, long)]
         dry_run: bool,

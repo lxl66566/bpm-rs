@@ -158,7 +158,7 @@ pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
     let assets = select_list(assets, architecture_markers_with_pos().as_ref(), None, None);
 
     // I don't want these suffix
-    let assets = sort_list(
+    sort_list(
         assets,
         [".pdb", ".dll", ".txt", ".checksum", ".sha", ".sha256"]
             .map(|item| (item, MatchPos::End))
@@ -166,9 +166,7 @@ pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
         None,
         None,
         Some(true),
-    );
-
-    assets
+    )
 }
 
 #[cfg(test)]

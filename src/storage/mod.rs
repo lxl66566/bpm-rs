@@ -100,7 +100,14 @@ pub struct Repo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_time: Option<std::time::SystemTime>,
 
+    /// Prefer musl builds over gnu when selecting assets (default: prefer gnu)
     #[serde(default, skip_serializing_if = "is_false")]
+    pub prefer_musl: bool,
+
+    /// Backward compatibility: old db may have `prefer_gnu` field.
+    /// `prefer_gnu: true` meant prefer gnu (now the default, so no-op).
+    /// Read during deserialization but never serialized.
+    #[serde(default, skip_serializing)]
     pub prefer_gnu: bool,
 
     #[serde(default = "default_true", skip_serializing_if = "is_true")]

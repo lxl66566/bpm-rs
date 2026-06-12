@@ -32,7 +32,10 @@ let assets = [
 
 let selected_assets = select(assets);
 assert!(!selected_assets.is_empty());
-if cfg!(windows) {
-    assert_eq!(selected_assets[0], "typstyle-win32-x64.exe");
-}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+assert_eq!(selected_assets[0], "typstyle-win32-x64.exe");
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+assert_eq!(selected_assets[0], "typstyle-linux-x64");
 ```

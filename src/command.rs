@@ -17,7 +17,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
             local,
             quiet,
             one_bin,
-            prefer_gnu,
+            prefer_musl,
             dry_run,
             interactive,
             filter,
@@ -31,7 +31,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
                 bin_name,
                 local,
                 one_bin,
-                prefer_gnu,
+                prefer_musl,
                 interactive,
                 filter,
                 name,
@@ -55,7 +55,7 @@ async fn cli_install(
     bin_name: Option<String>,
     local: Option<std::path::PathBuf>,
     one_bin: bool,
-    prefer_gnu: bool,
+    prefer_musl: bool,
     interactive: bool,
     filter: Vec<String>,
     name: Option<String>,
@@ -85,7 +85,7 @@ async fn cli_install(
         packages,
         bin_name,
         one_bin,
-        prefer_gnu,
+        prefer_musl,
         filter,
         name,
         pre_release,
@@ -229,7 +229,7 @@ fn build_repo_list(
     packages: Vec<String>,
     bin_name: Option<String>,
     one_bin: bool,
-    prefer_gnu: bool,
+    prefer_musl: bool,
     filter: Vec<String>,
     name: Option<String>,
     pre_release: bool,
@@ -245,7 +245,7 @@ fn build_repo_list(
                 repo = repo.with_bin_name(bn.clone());
             }
             repo.one_bin = one_bin;
-            repo.prefer_gnu = prefer_gnu;
+            repo.prefer_musl = prefer_musl;
             repo.no_pre = !pre_release;
             if !filter.is_empty() {
                 repo.asset_filter = filter.clone();

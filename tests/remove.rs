@@ -15,7 +15,7 @@ fn install_cli(pkg: &str, local: &std::path::Path) -> Cli {
             local: Some(local.to_path_buf()),
             quiet: true,
             one_bin: false,
-            prefer_gnu: false,
+            prefer_musl: false,
             dry_run: false,
             pre_release: false,
             interactive: false,

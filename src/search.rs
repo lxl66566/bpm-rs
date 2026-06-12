@@ -162,6 +162,15 @@ impl Searchable for Repo {
         };
 
         let selected = architecture_select::select(filtered);
+        // Sort preferred libc variant to the front (default: prefer gnu)
+        let preferred_kw = if self.prefer_musl { "musl" } else { "gnu" };
+        let selected = architecture_select::sort_list(
+            selected,
+            &[(preferred_kw, architecture_select::MatchPos::All)],
+            None,
+            None,
+            None,
+        );
 
         if interactive && selected.len() > 1 {
             let choice = ask_asset_interactive(&selected)?;

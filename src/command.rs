@@ -22,6 +22,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
             interactive,
             filter,
             name,
+            pre_release,
             sort,
         } => {
             cli_install(
@@ -34,6 +35,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
                 interactive,
                 filter,
                 name,
+                pre_release,
                 sort,
             )
             .await
@@ -57,6 +59,7 @@ async fn cli_install(
     interactive: bool,
     filter: Vec<String>,
     name: Option<String>,
+    pre_release: bool,
     sort: SortParam,
 ) -> Result<()> {
     ensure!(
@@ -78,7 +81,15 @@ async fn cli_install(
     }
 
     let db = ctx.db()?;
-    let repo_list = build_repo_list(packages, bin_name, one_bin, prefer_gnu, filter, name);
+    let repo_list = build_repo_list(
+        packages,
+        bin_name,
+        one_bin,
+        prefer_gnu,
+        filter,
+        name,
+        pre_release,
+    );
     debug!("repo_list: {repo_list:?}");
 
     // Filter out already installed packages upfront
@@ -221,6 +232,7 @@ fn build_repo_list(
     prefer_gnu: bool,
     filter: Vec<String>,
     name: Option<String>,
+    pre_release: bool,
 ) -> RepoList {
     packages
         .into_iter()
@@ -234,6 +246,7 @@ fn build_repo_list(
             }
             repo.one_bin = one_bin;
             repo.prefer_gnu = prefer_gnu;
+            repo.no_pre = !pre_release;
             if !filter.is_empty() {
                 repo.asset_filter = filter.clone();
             }

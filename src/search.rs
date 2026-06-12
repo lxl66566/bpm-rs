@@ -3,7 +3,6 @@ use std::sync::LazyLock as Lazy;
 use anyhow::{Result, anyhow, bail};
 use colored::Colorize;
 use log::{debug, info};
-use reqwest::StatusCode;
 use url::Url;
 
 use crate::{cli::SortParam, error::BpmError, storage::Repo, utils::UrlJoinAll};
@@ -98,28 +97,42 @@ impl Searchable for Repo {
             bail!("repo_owner or repo_name not set");
         }
 
-        let api = self.site.api_base().join_all_str([
-            "repos",
-            owner.unwrap(),
-            name.unwrap(),
-            "releases",
-            "latest",
-        ])?;
-
+        let per_page = if self.no_pre { "100" } else { "1" };
+        let api = Url::parse_with_params(
+            self.site
+                .api_base()
+                .join_all_str(["repos", owner.unwrap(), name.unwrap(), "releases"])?
+                .as_str(),
+            &[("per_page", per_page)],
+        )?;
         debug!("Get assets from API: {api}");
         let response = REQUEST_CLIENT.get(api).send().await?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            bail!("No releases found for {}/{}", owner.unwrap(), name.unwrap());
-        }
         if !response.status().is_success() {
             bail!("GitHub releases API returned status: {}", response.status());
         }
 
         let releases: serde_json::Value = response.json().await?;
-        self.version = releases["tag_name"].as_str().map(String::from);
+        let releases = releases
+            .as_array()
+            .ok_or_else(|| anyhow!("Expected array from releases endpoint"))?;
 
-        let raw_assets = releases["assets"].as_array().ok_or_else(|| {
+        let release = if self.no_pre {
+            releases
+                .iter()
+                .find(|r| r["prerelease"].as_bool() == Some(false))
+                .ok_or_else(|| {
+                    BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
+                })?
+        } else {
+            releases.first().ok_or_else(|| {
+                BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
+            })?
+        };
+
+        self.version = release["tag_name"].as_str().map(String::from);
+
+        let raw_assets = release["assets"].as_array().ok_or_else(|| {
             BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
         })?;
 

@@ -41,6 +41,8 @@ pub enum SubCommand {
         #[arg(long)]
         filter: Vec<String>,
         #[arg(long)]
+        pre_release: bool,
+        #[arg(long)]
         #[clap(default_value = "best-match")]
         sort: SortParam,
     },

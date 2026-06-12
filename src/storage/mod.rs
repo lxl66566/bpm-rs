@@ -77,6 +77,14 @@ fn is_false(b: &bool) -> bool {
     !(*b)
 }
 
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Repo {
@@ -95,7 +103,7 @@ pub struct Repo {
     #[serde(default, skip_serializing_if = "is_false")]
     pub prefer_gnu: bool,
 
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub no_pre: bool,
 
     #[serde(default, skip_serializing_if = "is_false")]

@@ -17,6 +17,7 @@ fn install_cli(pkg: &str, local: &std::path::Path) -> Cli {
             one_bin: false,
             prefer_gnu: false,
             dry_run: false,
+            pre_release: false,
             interactive: false,
             filter: vec![],
             name: None,

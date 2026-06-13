@@ -19,6 +19,22 @@ bpm (bin package manager) is a package manager based on GitHub Releases, allowin
 
 ## Installation
 
+### Bootstrap (recommended)
+
+Install the latest version with a single command:
+
+```sh
+# Unix (Linux / macOS), requires root privileges
+curl -fsSL https://raw.githubusercontent.com/lxl66566/bpm-rs/main/bootstrap.sh | sudo sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/lxl66566/bpm-rs/main/bootstrap.ps1 | iex
+```
+
+The script downloads the appropriate release archive, extracts the `bpm` binary, and installs it via `bpm install --local`.
+
 ### Pre-built binaries
 
 Download the binary for your platform from [Releases](https://github.com/lxl66566/bpm-rs/releases) and place it in your PATH.

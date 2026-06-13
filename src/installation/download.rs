@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
+use log::info;
 use trauma::{
     download::Download,
     downloader::{DownloaderBuilder, ProgressBarOpts, StyleOptions},
@@ -17,6 +18,8 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
         .into_iter()
         .filter_map(|repo| {
             let url_str = repo.asset.as_ref()?;
+            info!("Downloading `{}` from {url_str}", repo.name);
+
             let url = Url::parse(url_str)
                 .map_err(|_| anyhow!("Invalid asset URL: {url_str}"))
                 .ok()?;

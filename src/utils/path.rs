@@ -1,7 +1,9 @@
+#[cfg(windows)]
+use std::path::{Component, Prefix};
 use std::{
     ffi::OsStr,
     fs,
-    path::{Component, Path, PathBuf, Prefix},
+    path::{Path, PathBuf},
 };
 
 use walkdir::WalkDir;

@@ -21,6 +21,7 @@ pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<Pa
 }
 
 // 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
+#[cfg(windows)]
 fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
         info!(
@@ -103,7 +104,7 @@ mod unix_impl {
     use log::{debug, info, warn};
     use walkdir::WalkDir;
 
-    use super::{only_one_file_in_dir, rename_old};
+    use super::rename_old;
     use crate::{
         context::Context, installation::Installation, storage::Repo, utils::path::PathExt,
     };
@@ -252,7 +253,7 @@ mod unix_impl {
             let src = src.as_ref();
             let unix_paths = UnixPaths::new();
             let dry_run = ctx.dry_run;
-            let mut first_layer: Vec<_> = std::fs::read_dir(src)?
+            let first_layer: Vec<_> = std::fs::read_dir(src)?
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
                 .collect();
@@ -590,6 +591,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn test_move_dir_content() {
         let src_dir = tempdir().unwrap();
         let dst_dir = tempdir().unwrap();
@@ -618,6 +620,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn test_move_dir_content_dry_run() {
         let src_dir = tempdir().unwrap();
         let dst_dir = tempdir().unwrap();

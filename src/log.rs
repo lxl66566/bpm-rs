@@ -34,7 +34,7 @@ fn log_format(
     record: &Record<'_>,
 ) -> std::io::Result<()> {
     let level = colored_level(record.level());
-    writeln!(buf, "{level:5} {}", record.args())
+    write!(buf, "{level:5} {}", record.args())
 }
 
 fn colored_level(level: log::Level) -> colored::ColoredString {

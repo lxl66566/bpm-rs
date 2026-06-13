@@ -49,19 +49,22 @@ fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()>
 
 #[cfg(unix)]
 fn rename_old(path: &Path) -> std::io::Result<()> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let new_ext = format!("{ext}.old");
-    fs::rename(path, path.with_extension(new_ext))
+    let new_path = match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => path.with_extension(format!("{ext}.old")),
+        None => path.with_extension("old"),
+    };
+    fs::rename(path, new_path)
 }
 
 #[cfg(unix)]
 fn restore_old(path: &Path) -> std::io::Result<()> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let old_ext = format!("{ext}.old");
-    let old = path.with_extension(old_ext);
-    if old.exists() {
-        fs::rename(&old, path)?;
-        info!("Restoring {old:?} -> {path:?}");
+    let old_path = match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => path.with_extension(format!("{ext}.old")),
+        None => path.with_extension("old"),
+    };
+    if old_path.exists() {
+        fs::rename(&old_path, path)?;
+        info!("Restoring {old_path:?} -> {path:?}");
     }
     Ok(())
 }

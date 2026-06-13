@@ -20,9 +20,11 @@ pub mod utils;
 
 use anyhow::Result;
 
+#[cfg(windows)]
+use crate::command::cli_alias;
 use crate::{
     cli::{Cli, SubCommand},
-    command::{cli_alias, cli_info, cli_install, cli_remove, cli_update},
+    command::{cli_info, cli_install, cli_remove, cli_update},
     context::Context,
 };
 

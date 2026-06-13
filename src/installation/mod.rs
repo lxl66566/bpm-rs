@@ -265,7 +265,7 @@ mod unix_impl {
                 let bin_file = if first_layer.len() == 1 && first_layer[0].is_file() {
                     first_layer[0].clone()
                 } else {
-                    let candidates = src.as_ref().glob_name(&self.bin_name);
+                    let candidates = src.glob_name(&self.bin_name);
                     match candidates.into_iter().next() {
                         Some(f) => f,
                         None => {
@@ -337,7 +337,7 @@ mod unix_impl {
                 }
             }
 
-            for service_file in walk_files(src, ".service") {
+            for service_file in src.glob_name(".service") {
                 let dst = unix_paths
                     .services()
                     .join(service_file.file_name().unwrap());

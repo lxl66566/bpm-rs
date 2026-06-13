@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use log::info;
 
-use crate::{context::Context, utils::path::PathExt};
+use crate::context::Context;
 
 #[inline]
 pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<PathBuf>> {
@@ -23,6 +23,7 @@ pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<Pa
 // 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
 #[cfg(windows)]
 fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()> {
+    use crate::utils::path::PathExt;
     if dry_run {
         info!(
             "Dry run: moving contents from `{:?}` to `{:?}`",

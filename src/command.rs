@@ -77,6 +77,8 @@ pub async fn cli_install(
         match install_single(ctx, &mut repo, Some(&local_path)).await {
             Ok(()) => {
                 if !ctx.dry_run {
+                    repo.local = true;
+                    repo.interactive = interactive;
                     db.insert_repo(repo)?;
                 }
             }
@@ -169,6 +171,7 @@ pub async fn cli_install(
             Ok(()) => {
                 info!("`{}` installed successfully.", repo.name);
                 if !ctx.dry_run {
+                    repo.interactive = interactive;
                     db.insert_repo(repo)?;
                 }
             }
@@ -286,7 +289,8 @@ pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Res
 pub async fn cli_update(
     ctx: &Context,
     packages: Vec<String>,
-    _local: Option<std::path::PathBuf>,
+    local: Option<std::path::PathBuf>,
+    interactive: bool,
 ) -> Result<()> {
     #[cfg(unix)]
     crate::utils::check_root()?;
@@ -314,8 +318,34 @@ pub async fn cli_update(
     let total = to_update.len();
     for mut repo in to_update {
         let repo_name = repo.name.clone();
+
+        // Packages installed from local require --local to update
+        if repo.local {
+            if let Some(local_path) = &local {
+                info!("Updating `{repo_name}` from local path...");
+                match install_single(ctx, &mut repo, Some(local_path)).await {
+                    Ok(()) => {
+                        db.insert_repo(repo)?;
+                        info!("`{repo_name}` updated successfully.");
+                    }
+                    Err(e) => {
+                        failed.push(repo_name.clone());
+                        error!("Failed to update {repo_name}: {e}");
+                    }
+                }
+            } else {
+                error!(
+                    "`{repo_name}` was installed from a local path. Use --local to specify the path for update."
+                );
+                failed.push(repo_name);
+            }
+            continue;
+        }
+
+        let use_interactive = interactive || repo.interactive;
+
         info!("Updating `{repo_name}`...");
-        match repo.update_asset().await {
+        match repo.update_asset(use_interactive).await {
             Some((old, new)) => {
                 info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
                 match install_single(ctx, &mut repo, None).await {

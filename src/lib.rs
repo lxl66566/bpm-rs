@@ -60,7 +60,11 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
             .await
         }
         SubCommand::Remove { packages, soft } => cli_remove(&ctx, packages, soft).await,
-        SubCommand::Update { packages, local } => cli_update(&ctx, packages, local).await,
+        SubCommand::Update {
+            packages,
+            local,
+            interactive,
+        } => cli_update(&ctx, packages, local, interactive).await,
         #[cfg(windows)]
         SubCommand::Alias { new_name, old_name } => cli_alias(&ctx, old_name, new_name).await,
         SubCommand::Info { packages } => cli_info(&ctx, packages).await,

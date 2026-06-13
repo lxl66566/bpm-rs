@@ -130,6 +130,14 @@ pub struct Repo {
     #[cfg(windows)]
     #[serde(default, skip_serializing_if = "is_false")]
     pub is_msi: bool,
+
+    /// Whether the package was installed with --interactive
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub interactive: bool,
+
+    /// Whether the package was installed from a local path
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub local: bool,
 }
 
 impl Ord for Repo {

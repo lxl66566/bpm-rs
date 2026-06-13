@@ -87,6 +87,9 @@ pub enum SubCommand {
             value_name = "LOCAL_PATH"
         )]
         local: Option<PathBuf>,
+        /// Interactively choose which asset to update to
+        #[arg(short, long)]
+        interactive: bool,
     },
 
     /// Create an alias for an installed package (Windows only)

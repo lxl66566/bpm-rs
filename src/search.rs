@@ -16,13 +16,154 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
         .expect("Failed to build HTTP client")
 });
 
-pub trait Searchable {
-    async fn search(&self, sort: SortParam) -> Result<Vec<String>>;
-    fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()>;
-    async fn get_asset(&mut self, interactive: bool) -> Result<()>;
-    async fn update_asset(&mut self) -> Option<(String, String)>;
+// -------- platform-agnostic types --------
+
+/// A release with its downloadable assets, parsed from any release platform
+/// (GitHub, GitLab, etc.).
+#[derive(Debug, Clone)]
+pub struct Release {
+    pub tag: String,
+    pub assets: Vec<Asset>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Asset {
+    pub url: String,
+}
+
+// -------- trait: abstraction over release platforms --------
+
+pub trait Searchable {
+    /// Search for repositories by name.
+    async fn search(&self, sort: SortParam) -> Result<Vec<String>>;
+    /// Interactively choose a repository from search results.
+    fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()>;
+    /// Fetch the latest release and select a matching asset.
+    async fn get_asset(&mut self, interactive: bool) -> Result<()>;
+    /// Check for a newer version, try URL-replacement fast path, fall back to
+    /// full asset selection.
+    async fn update_asset(&mut self, interactive: bool) -> Option<(String, String)>;
+}
+
+// -------- internal helpers (Repo) --------
+impl Repo {
+    /// Fetch the latest release from the platform API and parse into a typed
+    /// [`Release`]. Platform-specific parsing is isolated here.
+    async fn fetch_latest_release(&self) -> Result<Release> {
+        let Some(owner) = self.repo_owner.as_deref() else {
+            bail!("repo_owner not set");
+        };
+        let Some(name) = self.repo_name.as_deref() else {
+            bail!("repo_name not set");
+        };
+
+        let per_page = if self.no_pre { "100" } else { "1" };
+        let api = Url::parse_with_params(
+            self.site
+                .api_base()
+                .join_all_str(["repos", owner, name, "releases"])?
+                .as_str(),
+            &[("per_page", per_page)],
+        )?;
+
+        debug!("Fetch releases from API: {api}");
+        let response = REQUEST_CLIENT.get(api).send().await?;
+        if !response.status().is_success() {
+            bail!("GitHub releases API returned status: {}", response.status());
+        }
+
+        let data: serde_json::Value = response.json().await?;
+        let raw_releases = data
+            .as_array()
+            .ok_or_else(|| anyhow!("Expected array from releases endpoint"))?;
+
+        let raw = if self.no_pre {
+            raw_releases
+                .iter()
+                .find(|r| r["prerelease"].as_bool() == Some(false))
+        } else {
+            raw_releases.first()
+        };
+        let raw =
+            raw.ok_or_else(|| BpmError::AssetNotFound(owner.to_string(), name.to_string()))?;
+
+        parse_github_release(raw, owner, name)
+    }
+
+    /// Select the best matching asset from a release.
+    fn select_asset(&self, release: &Release, interactive: bool) -> Result<String> {
+        if release.assets.is_empty() {
+            return Err(BpmError::AssetNotFound(
+                self.repo_owner.clone().unwrap_or_default(),
+                self.repo_name.clone().unwrap_or_default(),
+            )
+            .into());
+        }
+
+        let urls: Vec<String> = release.assets.iter().map(|a| a.url.clone()).collect();
+
+        let filtered = if self.asset_filter.is_empty() {
+            urls
+        } else {
+            urls.into_iter()
+                .filter(|u| self.asset_filter.iter().all(|f| u.contains(f)))
+                .collect()
+        };
+
+        let selected = architecture_select::select(filtered);
+        let preferred_kw = if self.prefer_musl { "musl" } else { "gnu" };
+        let mut selected = architecture_select::sort_list(
+            selected,
+            &[(preferred_kw, architecture_select::MatchPos::All)],
+            None,
+            None,
+            None,
+        );
+
+        if interactive && selected.len() > 1 {
+            ask_asset_interactive(&selected)
+        } else {
+            selected
+                .pop()
+                .ok_or_else(|| BpmError::InvalidAsset(self.name.clone()).into())
+        }
+    }
+}
+
+/// Isolate GitHub JSON → Release conversion here.
+/// When adding GitLab etc., add a sister function.
+fn parse_github_release(raw: &serde_json::Value, owner: &str, name: &str) -> Result<Release> {
+    let tag = raw["tag_name"]
+        .as_str()
+        .ok_or_else(|| BpmError::AssetNotFound(owner.to_string(), name.to_string()))?
+        .to_string();
+
+    let assets = raw["assets"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a["browser_download_url"].as_str())
+                .map(|u| Asset { url: u.to_string() })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if assets.is_empty() {
+        return Err(BpmError::AssetNotFound(owner.to_string(), name.to_string()).into());
+    }
+
+    Ok(Release { tag, assets })
+}
+
+async fn check_url_exists(url: &str) -> bool {
+    REQUEST_CLIENT
+        .head(url)
+        .send()
+        .await
+        .is_ok_and(|r| r.status().is_success())
+}
+
+// -------- Searchable trait implementation --------
 impl Searchable for Repo {
     async fn search(&self, sort: SortParam) -> Result<Vec<String>> {
         if self.url().is_some() {
@@ -50,13 +191,9 @@ impl Searchable for Repo {
             bail!("GitHub search API returned status: {}", response.status());
         }
 
-        let data: serde_json::Value = response.json().await?;
-
-        let items = data["items"]
+        let repos: Vec<String> = response.json::<serde_json::Value>().await?["items"]
             .as_array()
-            .ok_or_else(|| anyhow!("No items found in search response"))?;
-
-        let repos: Vec<String> = items
+            .ok_or_else(|| anyhow!("No items found in search response"))?
             .iter()
             .filter_map(|item| item["html_url"].as_str().map(String::from))
             .collect();
@@ -95,107 +232,38 @@ impl Searchable for Repo {
     }
 
     async fn get_asset(&mut self, interactive: bool) -> Result<()> {
-        let (owner, name) = (self.repo_owner.as_deref(), self.repo_name.as_deref());
-        if owner.is_none() || name.is_none() {
-            bail!("repo_owner or repo_name not set");
-        }
+        let release = self.fetch_latest_release().await?;
 
-        let per_page = if self.no_pre { "100" } else { "1" };
-        let api = Url::parse_with_params(
-            self.site
-                .api_base()
-                .join_all_str(["repos", owner.unwrap(), name.unwrap(), "releases"])?
-                .as_str(),
-            &[("per_page", per_page)],
-        )?;
-        debug!("Get assets from API: {api}");
-        let response = REQUEST_CLIENT.get(api).send().await?;
-
-        if !response.status().is_success() {
-            bail!("GitHub releases API returned status: {}", response.status());
-        }
-
-        let releases: serde_json::Value = response.json().await?;
-        let releases = releases
-            .as_array()
-            .ok_or_else(|| anyhow!("Expected array from releases endpoint"))?;
-
-        let release = if self.no_pre {
-            releases
-                .iter()
-                .find(|r| r["prerelease"].as_bool() == Some(false))
-                .ok_or_else(|| {
-                    BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
-                })?
-        } else {
-            releases.first().ok_or_else(|| {
-                BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
-            })?
-        };
-
-        self.version = release["tag_name"].as_str().map(String::from);
-
-        let raw_assets = release["assets"].as_array().ok_or_else(|| {
-            BpmError::AssetNotFound(owner.unwrap().to_string(), name.unwrap().to_string())
-        })?;
-
-        if raw_assets.is_empty() {
-            return Err(BpmError::AssetNotFound(
-                owner.unwrap().to_string(),
-                name.unwrap().to_string(),
-            )
-            .into());
-        }
-
-        let assets: Vec<String> = raw_assets
-            .iter()
-            .filter_map(|a| a["browser_download_url"].as_str().map(String::from))
-            .collect();
-
-        let filtered = if self.asset_filter.is_empty() {
-            assets
-        } else {
-            assets
-                .into_iter()
-                .filter(|a| self.asset_filter.iter().all(|f| a.contains(f)))
-                .collect::<Vec<_>>()
-        };
-
-        let selected = architecture_select::select(filtered);
-        // Sort preferred libc variant to the front (default: prefer gnu)
-        let preferred_kw = if self.prefer_musl { "musl" } else { "gnu" };
-        let selected = architecture_select::sort_list(
-            selected,
-            &[(preferred_kw, architecture_select::MatchPos::All)],
-            None,
-            None,
-            None,
-        );
-
-        if interactive && selected.len() > 1 {
-            let choice = ask_asset_interactive(&selected)?;
-            self.asset = Some(choice);
-        } else if let Some(asset) = selected.first() {
-            self.asset = Some(asset.clone());
-        } else {
-            return Err(BpmError::InvalidAsset(self.name.clone()).into());
-        }
+        self.version = Some(release.tag.clone());
+        self.asset = Some(self.select_asset(&release, interactive)?);
 
         info!("Selected asset: {}", self.asset.as_deref().unwrap_or(""));
         Ok(())
     }
 
-    async fn update_asset(&mut self) -> Option<(String, String)> {
+    async fn update_asset(&mut self, interactive: bool) -> Option<(String, String)> {
         let old_version = self.version.clone()?;
-        if self.get_asset(false).await.is_err() {
+        let old_asset = self.asset.clone()?;
+
+        let release = self.fetch_latest_release().await.ok()?;
+
+        if old_version == release.tag {
             return None;
         }
-        let new_version = self.version.clone()?;
-        if old_version == new_version {
-            None
-        } else {
-            Some((old_version, new_version))
+
+        // Fast path: replace old version string with new one in the asset URL
+        let candidate = old_asset.replace(&old_version, &release.tag);
+        if candidate != old_asset && check_url_exists(&candidate).await {
+            self.version = Some(release.tag.clone());
+            self.asset = Some(candidate);
+            return Some((old_version, release.tag));
         }
+
+        // Fallback: reuse the already-fetched release for full asset selection
+        let asset = self.select_asset(&release, interactive).ok()?;
+        self.version = Some(release.tag.clone());
+        self.asset = Some(asset);
+        Some((old_version, release.tag))
     }
 }
 

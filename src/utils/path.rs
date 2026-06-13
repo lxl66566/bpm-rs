@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs,
     path::{Component, Path, PathBuf, Prefix},
 };
@@ -111,6 +112,44 @@ pub fn windows_path_to_wsl<P: AsRef<Path>>(p: P) -> String {
     }
 }
 
+pub trait FileNameExt {
+    /// Preserve the full extension including compound ones like `.tar.gz`.
+    fn preserve_extension(&self) -> &str;
+}
+
+impl FileNameExt for str {
+    fn preserve_extension(&self) -> &str {
+        let lower = self.to_ascii_lowercase();
+        let compound_extensions = [
+            ".tar.gz",
+            ".tar.bz2",
+            ".tar.bz3",
+            ".tar.lz4",
+            ".tar.xz",
+            ".tar.lzma",
+            ".tar.lz",
+            ".tar.sz",
+            ".tar.zst",
+        ];
+        for cext in &compound_extensions {
+            if lower.ends_with(cext) {
+                let ext_start = self.len() - cext.len();
+                return &self[ext_start..];
+            }
+        }
+        if let Some(dot_pos) = self.rfind('.') {
+            return &self[dot_pos..];
+        }
+        ""
+    }
+}
+
+impl FileNameExt for OsStr {
+    fn preserve_extension(&self) -> &str {
+        self.to_str().map_or("", FileNameExt::preserve_extension)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +222,26 @@ mod tests {
 
         // 4. 测试重复删除（不应报错）
         assert!(dir_path.remove_all_allow_missing().is_ok());
+    }
+
+    #[test]
+    fn test_preserve_extension() {
+        assert_eq!("foo.tar.gz".preserve_extension(), ".tar.gz");
+        assert_eq!(
+            "foo-v1.0-linux-amd64.tar.gz".preserve_extension(),
+            ".tar.gz"
+        );
+        assert_eq!("foo.tar.bz2".preserve_extension(), ".tar.bz2");
+        assert_eq!("foo.tar.xz".preserve_extension(), ".tar.xz");
+        assert_eq!("foo.tar.zst".preserve_extension(), ".tar.zst");
+        assert_eq!("foo.tgz".preserve_extension(), ".tgz");
+        assert_eq!("foo.zip".preserve_extension(), ".zip");
+        assert_eq!("foo.7z".preserve_extension(), ".7z");
+        assert_eq!("foo.exe".preserve_extension(), ".exe");
+        assert_eq!("foo".preserve_extension(), "");
+        assert_eq!("".preserve_extension(), "");
+        assert_eq!("foo.TAR.GZ".preserve_extension(), ".TAR.GZ");
+        assert_eq!("FOO.tar.gz".preserve_extension(), ".tar.gz");
     }
 
     #[cfg(windows)]

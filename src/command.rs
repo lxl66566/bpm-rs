@@ -158,7 +158,8 @@ pub async fn cli_install(
     for mut repo in repos {
         let file = downloaded
             .iter()
-            .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(repo.name.as_str()))
+            .find(|(name, _)| *name == repo.name)
+            .map(|(_, path)| path)
             .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
 
         let extracted = download_tmp.path().join(format!("{}_extracted", repo.name));
@@ -240,7 +241,7 @@ pub async fn install_single(
             "No files downloaded for {}",
             repo.name
         );
-        unzip::unzip(&downloaded[0], tmp_path.join("extracted"))?
+        unzip::unzip(&downloaded[0].1, tmp_path.join("extracted"))?
     };
 
     repo.install(&main_path, ctx)?;

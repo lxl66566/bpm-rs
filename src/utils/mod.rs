@@ -2,6 +2,7 @@ pub mod path;
 pub mod table;
 pub mod url;
 
+pub use path::FileNameExt;
 pub use url::*;
 
 #[cfg(unix)]

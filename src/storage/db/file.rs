@@ -44,7 +44,10 @@ impl DbOperation for Db {
     }
 
     fn remove_repo(&self, name: &str) -> anyhow::Result<()> {
-        self.repo_list.lock().unwrap().retain(|x| x.name != name);
+        self.repo_list
+            .lock()
+            .unwrap()
+            .retain(|x| x.name != name);
         self.repo_list.store(&self.db_path)?;
         Ok(())
     }
@@ -65,8 +68,16 @@ mod tests {
     fn test_db_basic_operation() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir().unwrap();
         let db = Db::create_or_open(temp_dir.path().join("test.ron"))?;
-        db.insert_repo(Repo::new("bpm").by_url("https://github.com/lxl66566/bpm-rs/"))?;
-        db.insert_repo(Repo::new("abd").by_url("https://github.com/lxl6656645/b132/"))?;
+        db.insert_repo(
+            Repo::new("bpm")
+                .by_url("https://github.com/lxl66566/bpm-rs/")
+                .unwrap(),
+        )?;
+        db.insert_repo(
+            Repo::new("abd")
+                .by_url("https://github.com/lxl6656645/b132/")
+                .unwrap(),
+        )?;
 
         let all = db.get_repo_list();
         assert_eq!(all.len(), 2);
@@ -90,7 +101,11 @@ mod tests {
 
         {
             let db = Db::create_or_open(&path).unwrap();
-            db.insert_repo(Repo::new("persist-test").by_url("https://github.com/test/repo"))
+            db.insert_repo(
+                Repo::new("persist-test")
+                    .by_url("https://github.com/test/repo")
+                    .unwrap(),
+            )
                 .unwrap();
         }
 

@@ -55,7 +55,7 @@ pub async fn cli_install(
 
     // Filter out already installed packages upfront
     let mut repos: Vec<Repo> = repo_list
-        .0
+        .into_inner()
         .into_iter()
         .filter(|repo| {
             if !ctx.dry_run && db.get_repo(&repo.name).is_some() {
@@ -300,7 +300,7 @@ pub async fn cli_update(
     let all_repos = db.get_repo_list();
 
     let to_update: Vec<Repo> = if packages.is_empty() {
-        all_repos.0
+        all_repos.into_inner()
     } else {
         packages
             .iter()
@@ -399,7 +399,7 @@ pub async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Res
 
     let mut count = 0u32;
     let all_repos = db.get_repo_list();
-    for repo in &all_repos.0 {
+    for repo in all_repos.as_slice() {
         for file in &repo.installed_files {
             let path = std::path::Path::new(file);
             if !path.exists() || path.is_dir() {

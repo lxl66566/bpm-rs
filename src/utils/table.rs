@@ -63,7 +63,9 @@ mod tests {
     fn test_print_repo() {
         println!(
             "{}",
-            Repo::new("bpm-rs").by_url("https://github.com/lxl66566/bpm-rs")
+            Repo::new("bpm-rs")
+                .by_url("https://github.com/lxl66566/bpm-rs")
+                .unwrap()
         );
     }
 }

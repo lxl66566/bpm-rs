@@ -1,12 +1,12 @@
 use std::sync::LazyLock as Lazy;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use log::{debug, info};
 use terminal_menu::{button, label, menu, mut_menu, run};
 use url::Url;
 
-use crate::{cli::SortParam, error::BpmError, storage::Repo, utils::UrlJoinAll};
+use crate::{cli::SortParam, storage::Repo, utils::UrlJoinAll};
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
@@ -84,8 +84,9 @@ impl Repo {
         } else {
             raw_releases.first()
         };
-        let raw =
-            raw.ok_or_else(|| BpmError::AssetNotFound(owner.to_string(), name.to_string()))?;
+        let raw = raw.ok_or_else(|| {
+            anyhow!("No release asset found for {owner}/{name}. The repo may have no releases.")
+        })?;
 
         parse_github_release(raw, owner, name)
     }
@@ -93,11 +94,11 @@ impl Repo {
     /// Select the best matching asset from a release.
     fn select_asset(&self, release: &Release, interactive: bool) -> Result<String> {
         if release.assets.is_empty() {
-            return Err(BpmError::AssetNotFound(
-                self.repo_owner.clone().unwrap_or_default(),
-                self.repo_name.clone().unwrap_or_default(),
-            )
-            .into());
+            bail!(
+                "No release asset found for {}/{}",
+                self.repo_owner.as_deref().unwrap_or("?"),
+                self.repo_name.as_deref().unwrap_or("?")
+            );
         }
 
         let urls: Vec<String> = release.assets.iter().map(|a| a.url.clone()).collect();
@@ -125,7 +126,7 @@ impl Repo {
         } else {
             selected
                 .pop()
-                .ok_or_else(|| BpmError::InvalidAsset(self.name.clone()).into())
+                .context(format!("No valid asset found for '{}'. Try --interactive.", self.name))
         }
     }
 }
@@ -135,7 +136,7 @@ impl Repo {
 fn parse_github_release(raw: &serde_json::Value, owner: &str, name: &str) -> Result<Release> {
     let tag = raw["tag_name"]
         .as_str()
-        .ok_or_else(|| BpmError::AssetNotFound(owner.to_string(), name.to_string()))?
+        .with_context(|| format!("Release for {owner}/{name} has no tag_name"))?
         .to_string();
 
     let assets = raw["assets"]
@@ -149,7 +150,7 @@ fn parse_github_release(raw: &serde_json::Value, owner: &str, name: &str) -> Res
         .unwrap_or_default();
 
     if assets.is_empty() {
-        return Err(BpmError::AssetNotFound(owner.to_string(), name.to_string()).into());
+        bail!("No downloadable assets in release for {owner}/{name}");
     }
 
     Ok(Release { tag, assets })
@@ -207,7 +208,7 @@ impl Searchable for Repo {
         }
 
         if quiet {
-            self.set_by_url(items[0].as_str());
+            self.set_by_url(&items[0])?;
             return Ok(());
         }
 
@@ -227,7 +228,7 @@ impl Searchable for Repo {
         }
         let selected = temp.selected_item_name();
         info!("selected repo: {selected}");
-        self.set_by_url(selected);
+        self.set_by_url(selected)?;
         Ok(())
     }
 

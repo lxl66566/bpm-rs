@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::{error::BpmResult, storage::db::DbOperation};
+use anyhow::Result;
+
+use crate::storage::db::DbOperation;
 
 #[derive(Debug)]
 pub struct Context {
@@ -54,8 +56,8 @@ impl Context {
         self
     }
 
-    pub fn db(&self) -> BpmResult<crate::storage::db::Db> {
-        Ok(crate::storage::db::Db::create_or_open(&self.db_path)?)
+    pub fn db(&self) -> Result<crate::storage::db::Db> {
+        crate::storage::db::Db::create_or_open(&self.db_path)
     }
 
     #[inline]
@@ -106,7 +108,11 @@ mod tests {
         db.insert_repo(Repo::default()).unwrap(); // need to insert a repo to store db
         assert!(tmp.path().join("my_db.ron").exists());
 
-        db.insert_repo(Repo::new("ctx-test").by_url("https://github.com/a/b"))
+        db.insert_repo(
+            Repo::new("ctx-test")
+                .by_url("https://github.com/a/b")
+                .unwrap(),
+        )
             .unwrap();
         assert!(db.get_repo("ctx-test").is_some());
     }

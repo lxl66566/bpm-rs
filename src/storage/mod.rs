@@ -222,38 +222,39 @@ impl Repo {
         Ok(())
     }
 
-    pub fn set_by_url(&mut self, url: &str) {
-        let binding = Url::parse(url).expect("parsing invalid URL.");
-        let full_name = binding.path();
-        self.set_by_fullname(full_name).unwrap();
+    pub fn set_by_url(&mut self, url: &str) -> Result<()> {
+        let parsed = Url::parse(url).map_err(|e| anyhow!("Invalid URL '{url}': {e}"))?;
+        self.set_by_fullname(parsed.path())
     }
 
-    #[must_use]
-    pub fn by_url(mut self, url: &str) -> Self {
-        self.set_by_url(url);
-        self
+    pub fn by_url(mut self, url: &str) -> Result<Self> {
+        self.set_by_url(url)?;
+        Ok(self)
     }
 
-    #[must_use]
-    pub fn by_fullname(mut self, full_name: &str) -> Self {
-        self.set_by_fullname(full_name).unwrap();
-        self
+    pub fn by_fullname(mut self, full_name: &str) -> Result<Self> {
+        self.set_by_fullname(full_name)?;
+        Ok(self)
     }
 }
 
 impl From<Url> for Repo {
     #[inline]
     fn from(value: Url) -> Self {
-        let fullname = value.path();
-        let res = split_full_name(fullname).expect("construct repo from invalid URL.");
-        let name = res.1.clone();
-        Self::default()
-            .tap_mut(|r| {
-                r.name = name.clone();
-                r.repo_name = Some(res.1);
-                r.repo_owner = Some(res.0);
-            })
-            .with_bin_name(name)
+        if let Ok((owner, name)) = split_full_name(value.path()) {
+            let mut repo = Self::new(name.clone());
+            repo.repo_name = Some(name);
+            repo.repo_owner = Some(owner);
+            repo
+        } else {
+            // Fallback: use the last non-empty path segment as name
+            let name = value
+                .path_segments()
+                .and_then(|mut s| s.next_back())
+                .filter(|n| !n.is_empty())
+                .unwrap_or("unknown");
+            Self::new(name)
+        }
     }
 }
 
@@ -267,8 +268,6 @@ impl From<&str> for Repo {
     }
 }
 
-use tap::Tap;
-
 #[derive(
     Debug,
     Serialize,
@@ -277,11 +276,64 @@ use tap::Tap;
     PartialEq,
     Eq,
     Default,
-    derive_more::From,
-    derive_more::Deref,
-    derive_more::DerefMut,
 )]
-pub struct RepoList(pub Vec<Repo>);
+pub struct RepoList(Vec<Repo>);
+
+impl RepoList {
+    #[must_use]
+    pub fn new(repos: Vec<Repo>) -> Self {
+        Self(repos)
+    }
+
+    #[must_use]
+    pub fn as_slice(&self) -> &[Repo] {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_inner(self) -> Vec<Repo> {
+        self.0
+    }
+
+    pub fn push(&mut self, repo: Repo) {
+        self.0.push(repo);
+    }
+
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&Repo) -> bool,
+    {
+        self.0.retain(f);
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Repo> {
+        self.0.iter()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<'a> IntoIterator for &'a RepoList {
+    type Item = &'a Repo;
+    type IntoIter = std::slice::Iter<'a, Repo>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl From<Vec<Repo>> for RepoList {
+    fn from(v: Vec<Repo>) -> Self {
+        Self(v)
+    }
+}
 
 impl fmt::Display for RepoList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -299,7 +351,9 @@ mod tests {
 
     #[test]
     fn test_set_by_url() {
-        let repo = Repo::new("abc").by_url("https://github.com/lxl66566/bpm-rs/");
+        let repo = Repo::new("abc")
+            .by_url("https://github.com/lxl66566/bpm-rs/")
+            .unwrap();
         assert_eq!(
             repo.url().unwrap().as_str(),
             "https://github.com/lxl66566/bpm-rs"
@@ -336,8 +390,10 @@ mod tests {
 
     #[test]
     fn test_repo_list_display() {
-        let list = RepoList(vec![
-            Repo::new("bpm-rs").by_url("https://github.com/lxl66566/bpm-rs"),
+        let list = RepoList::new(vec![
+            Repo::new("bpm-rs")
+                .by_url("https://github.com/lxl66566/bpm-rs")
+                .unwrap(),
         ]);
         let s = format!("{list}");
         println!("{s}");

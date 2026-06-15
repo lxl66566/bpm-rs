@@ -12,7 +12,6 @@
 pub mod cli;
 pub mod command;
 pub mod context;
-pub mod error;
 pub mod installation;
 mod search;
 pub mod storage;

@@ -64,12 +64,26 @@ impl ArchiveFormat {
             f if f.ends_with(".tar.lzma") || f.ends_with(".tlzma") => return Some(Self::TarLzma),
             f if f.ends_with(".tar.lz") || f.ends_with(".tlz") => return Some(Self::TarLzip),
             f if f.ends_with(".tar.sz") || f.ends_with(".tsz") => return Some(Self::TarSnappy),
-            f if f.ends_with(".tar.zst") || f.ends_with(".tzst") => return Some(Self::TarZstd),
+            f if f.ends_with(".tar.zst")
+                || f.ends_with(".tzst")
+                || f.ends_with(".tar.zstd") =>
+            {
+                return Some(Self::TarZstd)
+            }
             _ => {}
         }
         // Archive formats
         match filename {
-            f if f.ends_with(".zip") || f.ends_with(".cbz") => return Some(Self::Zip),
+            f if f.ends_with(".zip")
+                || f.ends_with(".cbz")
+                || f.ends_with(".jar")
+                || f.ends_with(".war")
+                || f.ends_with(".ear")
+                || f.ends_with(".whl")
+                || f.ends_with(".apk") =>
+            {
+                return Some(Self::Zip)
+            }
             f if f.ends_with(".tar") || f.ends_with(".cbt") => return Some(Self::Tar),
             f if f.ends_with(".7z") || f.ends_with(".cb7") => return Some(Self::SevenZip),
             _ => {}
@@ -84,7 +98,7 @@ impl ArchiveFormat {
             f if f.ends_with(".lzma") => return Some(Self::Lzma),
             f if f.ends_with(".lz") => return Some(Self::Lzip),
             f if f.ends_with(".sz") => return Some(Self::Snappy),
-            f if f.ends_with(".zst") => return Some(Self::Zstd),
+            f if f.ends_with(".zst") || f.ends_with(".zstd") => return Some(Self::Zstd),
             f if f.ends_with(".br") => return Some(Self::Brotli),
             _ => {}
         }
@@ -500,6 +514,27 @@ mod tests {
         assert_eq!(
             ArchiveFormat::from_filename("FOO.ZIP"),
             Some(ArchiveFormat::Zip)
+        );
+        // Format aliases
+        assert_eq!(
+            ArchiveFormat::from_filename("app.jar"),
+            Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormat::from_filename("lib.whl"),
+            Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormat::from_filename("app.apk"),
+            Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormat::from_filename("foo.zstd"),
+            Some(ArchiveFormat::Zstd)
+        );
+        assert_eq!(
+            ArchiveFormat::from_filename("foo.tar.zstd"),
+            Some(ArchiveFormat::TarZstd)
         );
     }
 

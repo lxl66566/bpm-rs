@@ -23,7 +23,7 @@ use anyhow::Result;
 use crate::command::cli_alias;
 use crate::{
     cli::{Cli, SubCommand},
-    command::{cli_info, cli_install, cli_remove, cli_update},
+    command::{cli_doctor, cli_info, cli_install, cli_remove, cli_update},
     context::Context,
 };
 
@@ -44,6 +44,11 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
         } => cli_update(&ctx, packages, local, interactive).await,
         #[cfg(windows)]
         SubCommand::Alias { new_name, old_name } => cli_alias(&ctx, old_name, new_name).await,
-        SubCommand::Info { packages } => cli_info(&ctx, packages).await,
+        SubCommand::Info {
+            packages,
+            json,
+            outdated,
+        } => cli_info(&ctx, packages, json, outdated).await,
+        SubCommand::Doctor => cli_doctor(&ctx).await,
     }
 }

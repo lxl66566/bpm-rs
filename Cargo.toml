@@ -37,9 +37,8 @@ sevenz-rust2        = { version = "0.21" }
 snap                = "1"
 strum_macros        = "0.28"
 tar                 = "0.4"
+dialoguer           = { version = "0.11", features = ["fuzzy-select"] }
 tempfile            = "3"
-terminal-menu       = "3.0"
-thiserror           = "2"
 tokio               = { version = "1.52", features = ["rt", "rt-multi-thread", "macros"] }
 trauma              = { version = "2", features = ["rustls"] }
 url                 = { version = "2", features = ["serde"] }

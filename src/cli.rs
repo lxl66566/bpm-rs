@@ -118,7 +118,17 @@ pub enum SubCommand {
     Info {
         /// Package names to query (empty = list all)
         packages: Vec<String>,
+        /// Output in JSON format (for scripting)
+        #[arg(long)]
+        json: bool,
+        /// Check for available updates (requires network)
+        #[arg(long)]
+        outdated: bool,
     },
+
+    /// Verify installed package integrity
+    #[clap(visible_alias("check"))]
+    Doctor,
 }
 
 /// Sort method for search results

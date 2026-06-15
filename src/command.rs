@@ -453,8 +453,39 @@ pub async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Res
     Ok(())
 }
 
-pub async fn cli_info(ctx: &Context, packages: Vec<String>) -> Result<()> {
+pub async fn cli_info(
+    ctx: &Context,
+    packages: Vec<String>,
+    json: bool,
+    outdated: bool,
+) -> Result<()> {
     let db = ctx.db()?;
+
+    if json {
+        // JSON output for scripting
+        if packages.is_empty() {
+            let all = db.get_repo_list();
+            let json = serde_json::to_string_pretty(all.as_slice())?;
+            println!("{json}");
+        } else {
+            for name in &packages {
+                match db.get_repo(name) {
+                    Some(repo) => {
+                        let json = serde_json::to_string_pretty(&repo)?;
+                        println!("{json}");
+                    }
+                    None => error!("Package `{name}` not found."),
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if outdated {
+        return check_outdated(ctx, packages).await;
+    }
+
+    // Default: table output
     if packages.is_empty() {
         let all = db.get_repo_list();
         println!("{all}");
@@ -465,6 +496,84 @@ pub async fn cli_info(ctx: &Context, packages: Vec<String>) -> Result<()> {
                 None => error!("Package `{name}` not found."),
             }
         }
+    }
+    Ok(())
+}
+
+/// Check which installed packages have available updates.
+async fn check_outdated(ctx: &Context, packages: Vec<String>) -> Result<()> {
+    let db = ctx.db()?;
+    let all_repos = db.get_repo_list();
+
+    let to_check: Vec<Repo> = if packages.is_empty() {
+        all_repos.into_inner()
+    } else {
+        all_repos
+            .into_inner()
+            .into_iter()
+            .filter(|r| packages.contains(&r.name))
+            .collect()
+    };
+
+    let mut tasks = tokio::task::JoinSet::new();
+    for repo in to_check {
+        if repo.local {
+            info!("`{}` is locally installed, skipping.", repo.name);
+            continue;
+        }
+        tasks.spawn(async move {
+            let latest = repo.fetch_latest_release().await;
+            (repo, latest)
+        });
+    }
+
+    while let Some(res) = tasks.join_next().await {
+        let (repo, latest_result) = res?;
+        match latest_result {
+            Ok(release) => {
+                let current = repo.version.as_deref().unwrap_or("unknown");
+                let latest_tag = &release.tag;
+                if current == latest_tag.as_str() {
+                    debug!("{} is up to date ({})", repo.name, current);
+                } else {
+                    info!("{}  {} -> {}", repo.name, current, latest_tag);
+                }
+            }
+            Err(e) => {
+                error!("Failed to check {}: {e}", repo.name);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn cli_doctor(ctx: &Context) -> Result<()> {
+    let db = ctx.db()?;
+    let all_repos = db.get_repo_list();
+    let mut issues = 0u32;
+
+    for repo in all_repos.as_slice() {
+        let mut missing = 0u32;
+        for file in &repo.installed_files {
+            if !file.exists() {
+                if missing == 0 {
+                    error!("[{}] missing files:", repo.name);
+                }
+                error!("  {}", file.display());
+                missing += 1;
+            }
+        }
+        if missing > 0 {
+            issues += missing;
+        } else {
+            info!("[{}] OK ({} files)", repo.name, repo.installed_files.len());
+        }
+    }
+
+    if issues > 0 {
+        error!("Found {issues} missing file(s) across all packages.");
+    } else {
+        info!("All packages verified successfully.");
     }
     Ok(())
 }

@@ -1,9 +1,8 @@
 use std::sync::LazyLock as Lazy;
 
 use anyhow::{Context, Result, anyhow, bail};
-use colored::Colorize;
+use dialoguer::{FuzzySelect, Select};
 use log::{debug, info};
-use terminal_menu::{button, label, menu, mut_menu, run};
 use url::Url;
 
 use crate::{cli::SortParam, storage::Repo, utils::UrlJoinAll};
@@ -63,7 +62,7 @@ pub trait Searchable {
 impl Repo {
     /// Fetch the latest release from the platform API and parse into a typed
     /// [`Release`]. Platform-specific parsing is isolated here.
-    async fn fetch_latest_release(&self) -> Result<Release> {
+    pub(crate) async fn fetch_latest_release(&self) -> Result<Release> {
         let Some(owner) = self.repo_owner.as_deref() else {
             bail!("repo_owner not set");
         };
@@ -262,21 +261,16 @@ impl Searchable for Repo {
             return Ok(());
         }
 
-        let mut menu_items = vec![label(
-            "Please select the repo you want to install:"
-                .bold()
-                .to_string(),
-        )];
-        for item in &items {
-            menu_items.push(button(item));
-        }
-        let select_menu = menu(menu_items);
-        run(&select_menu);
-        let temp = mut_menu(&select_menu);
-        if temp.canceled() {
+        let selection = Select::new()
+            .with_prompt("Please select the repo you want to install")
+            .items(&items)
+            .default(0)
+            .interact_opt()?;
+
+        let Some(idx) = selection else {
             bail!("User cancelled the repo selection");
-        }
-        let selected = temp.selected_item_name();
+        };
+        let selected = &items[idx];
         info!("selected repo: {selected}");
         self.set_by_url(selected)?;
         Ok(())
@@ -319,24 +313,19 @@ impl Searchable for Repo {
 }
 
 fn ask_asset_interactive(assets: &[String]) -> Result<String> {
-    use terminal_menu::{button, label, menu, mut_menu, run};
-    let mut items = vec![label("Select an asset:".bold().to_string())];
-    for asset in assets {
-        let short = asset.rsplit('/').next().unwrap_or(asset);
-        items.push(button(short));
-    }
-    let m = menu(items);
-    run(&m);
-    let binding = mut_menu(&m);
-    if binding.canceled() {
+    let short_names: Vec<&str> = assets.iter().map(|a| a.rsplit('/').next().unwrap_or(a)).collect();
+
+    // Use FuzzySelect for assets (many items, search is helpful)
+    let selection = FuzzySelect::new()
+        .with_prompt("Select an asset")
+        .items(&short_names)
+        .default(0)
+        .interact_opt()?;
+
+    let Some(idx) = selection else {
         bail!("User cancelled the asset selection");
-    }
-    let selected_name = binding.selected_item_name();
-    assets
-        .iter()
-        .find(|a| a.rsplit('/').next().unwrap_or(a) == selected_name)
-        .cloned()
-        .ok_or_else(|| anyhow!("Selected asset not found"))
+    };
+    Ok(assets[idx].clone())
 }
 
 #[cfg(test)]

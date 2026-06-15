@@ -1,11 +1,33 @@
 mod common;
 
 use bin_package_manager::{
-    cli::{Cli, SortParam, SubCommand},
+    cli::{Cli, InstallOptions, SortParam, SubCommand},
     dispatch,
     storage::db::DbOperation,
 };
 use common::*;
+
+fn install_cli(zip_path: &std::path::Path, dry_run: bool) -> Cli {
+    Cli {
+        command: SubCommand::Install {
+            opts: InstallOptions {
+                packages: vec!["test-app".to_string()],
+                bin_name: None,
+                local: Some(zip_path.to_path_buf()),
+                one_bin: false,
+                prefer_musl: false,
+                interactive: false,
+                filter: vec![],
+                name: None,
+                pre_release: false,
+                sort: SortParam::default(),
+            },
+            quiet: true,
+            dry_run,
+        },
+        config: None,
+    }
+}
 
 #[tokio::test]
 async fn dry_run_install_does_not_persist() {
@@ -13,25 +35,9 @@ async fn dry_run_install_does_not_persist() {
     let zip_path = env.tmp().join("test-app.zip");
     create_test_zip(&zip_path, &[("test-app", b"binary")]);
 
-    let cli = Cli {
-        command: SubCommand::Install {
-            packages: vec!["test-app".to_string()],
-            bin_name: None,
-            local: Some(zip_path),
-            quiet: true,
-            one_bin: false,
-            prefer_musl: false,
-            dry_run: true,
-            pre_release: false,
-            interactive: false,
-            filter: vec![],
-            name: None,
-            sort: SortParam::default(),
-        },
-        config: None,
-    };
-
-    dispatch(cli, env.ctx()).await.unwrap();
+    dispatch(install_cli(&zip_path, true), env.ctx())
+        .await
+        .unwrap();
 
     assert!(
         env.db().get_repo("test-app").is_none(),
@@ -53,25 +59,9 @@ async fn dry_run_context_remove_keeps_files() {
     let zip_path = env.tmp().join("test-app.zip");
     create_test_zip(&zip_path, &[("test-app", b"binary")]);
 
-    let install_cli = Cli {
-        command: SubCommand::Install {
-            packages: vec!["test-app".to_string()],
-            bin_name: None,
-            local: Some(zip_path),
-            quiet: true,
-            one_bin: false,
-            prefer_musl: false,
-            dry_run: false,
-            pre_release: false,
-            interactive: false,
-            filter: vec![],
-            name: None,
-            sort: SortParam::default(),
-        },
-        config: None,
-    };
-
-    dispatch(install_cli, env.ctx()).await.unwrap();
+    dispatch(install_cli(&zip_path, false), env.ctx())
+        .await
+        .unwrap();
     assert!(env.app_path().join("test-app").exists());
 
     let remove_cli = Cli {

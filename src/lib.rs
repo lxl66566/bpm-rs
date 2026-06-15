@@ -30,33 +30,11 @@ use crate::{
 pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
     match cli.command {
         SubCommand::Install {
-            packages,
-            bin_name,
-            local,
+            opts,
             quiet,
-            one_bin,
-            prefer_musl,
             dry_run,
-            interactive,
-            filter,
-            name,
-            pre_release,
-            sort,
         } => {
-            cli_install(
-                &ctx.with_dry_run(dry_run).with_quiet(quiet),
-                packages,
-                bin_name,
-                local,
-                one_bin,
-                prefer_musl,
-                interactive,
-                filter,
-                name,
-                pre_release,
-                sort,
-            )
-            .await
+            cli_install(&ctx.with_dry_run(dry_run).with_quiet(quiet), opts).await
         }
         SubCommand::Remove { packages, soft } => cli_remove(&ctx, packages, soft).await,
         SubCommand::Update {

@@ -12,55 +12,63 @@ pub struct Cli {
     pub config: Option<PathBuf>,
 }
 
+/// Options shared by install and update for selecting and downloading assets.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Parser, Debug, Clone)]
+pub struct InstallOptions {
+    /// Package names or GitHub repos to install (e.g. `ripgrep`, `user/repo`, `https://github.com/user/repo`)
+    #[clap(required = true)]
+    pub packages: Vec<String>,
+    /// Override the install name (defaults to the package name)
+    #[arg(short, long)]
+    pub name: Option<String>,
+    /// Specify the binary file name to look for after extraction (defaults
+    /// to package name)
+    #[arg(short, long)]
+    pub bin_name: Option<String>,
+    /// Install from a local archive or directory instead of downloading
+    #[arg(
+        short,
+        long,
+        value_hint(ValueHint::FilePath),
+        value_name = "LOCAL_PATH"
+    )]
+    pub local: Option<PathBuf>,
+    /// Only install the matched binary, skip other files (Linux only)
+    #[arg(long)]
+    pub one_bin: bool,
+    /// Prefer musl builds over gnu when selecting assets (default: prefer
+    /// gnu)
+    #[arg(long)]
+    pub prefer_musl: bool,
+    /// Interactively choose which asset to download
+    #[arg(short, long)]
+    pub interactive: bool,
+    /// Only consider assets containing all specified substrings
+    #[arg(long)]
+    pub filter: Vec<String>,
+    /// Include pre-release versions when searching
+    #[arg(long)]
+    pub pre_release: bool,
+    /// Sort method for search results
+    #[arg(long)]
+    #[clap(default_value = "best-match")]
+    pub sort: SortParam,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum SubCommand {
     /// Install a package
     #[clap(visible_alias("i"))]
     Install {
-        /// Package names or GitHub repos to install (e.g. `ripgrep`, `user/repo`, `https://github.com/user/repo`)
-        #[clap(required = true)]
-        packages: Vec<String>,
-        /// Override the install name (defaults to the package name)
-        #[arg(short, long)]
-        name: Option<String>,
-        /// Specify the binary file name to look for after extraction (defaults
-        /// to package name)
-        #[arg(short, long)]
-        bin_name: Option<String>,
-        /// Install from a local archive or directory instead of downloading
-        #[arg(
-            short,
-            long,
-            value_hint(ValueHint::FilePath),
-            value_name = "LOCAL_PATH"
-        )]
-        local: Option<PathBuf>,
+        #[command(flatten)]
+        opts: InstallOptions,
         /// Suppress progress output; conflicts with --interactive
         #[arg(short, long, conflicts_with = "interactive")]
         quiet: bool,
-        /// Only install the matched binary, skip other files (Linux only)
-        #[arg(long)]
-        one_bin: bool,
-        /// Prefer musl builds over gnu when selecting assets (default: prefer
-        /// gnu)
-        #[arg(long)]
-        prefer_musl: bool,
         /// Simulate the installation without making any changes
         #[arg(short, long)]
         dry_run: bool,
-        /// Interactively choose which asset to download
-        #[arg(short, long)]
-        interactive: bool,
-        /// Only consider assets containing all specified substrings
-        #[arg(long)]
-        filter: Vec<String>,
-        /// Include pre-release versions when searching
-        #[arg(long)]
-        pre_release: bool,
-        /// Sort method for search results
-        #[arg(long)]
-        #[clap(default_value = "best-match")]
-        sort: SortParam,
     },
 
     /// Uninstall a package

@@ -1,7 +1,7 @@
 mod common;
 
 use bin_package_manager::{
-    cli::{Cli, SortParam, SubCommand},
+    cli::{Cli, InstallOptions, SortParam, SubCommand},
     dispatch,
     storage::db::DbOperation,
 };
@@ -10,18 +10,20 @@ use common::*;
 fn install_cli(pkg: &str, local: &std::path::Path, dry_run: bool) -> Cli {
     Cli {
         command: SubCommand::Install {
-            packages: vec![pkg.to_string()],
-            bin_name: None,
-            local: Some(local.to_path_buf()),
+            opts: InstallOptions {
+                packages: vec![pkg.to_string()],
+                bin_name: None,
+                local: Some(local.to_path_buf()),
+                one_bin: false,
+                prefer_musl: false,
+                interactive: false,
+                filter: vec![],
+                name: None,
+                pre_release: false,
+                sort: SortParam::default(),
+            },
             quiet: true,
-            one_bin: false,
-            prefer_musl: false,
             dry_run,
-            pre_release: false,
-            interactive: false,
-            filter: vec![],
-            name: None,
-            sort: SortParam::default(),
         },
         config: None,
     }
@@ -166,18 +168,20 @@ async fn install_multiple_local_packages_fails() {
 
     let cli = Cli {
         command: SubCommand::Install {
-            packages: vec!["test-app".to_string(), "other".to_string()],
-            bin_name: None,
-            local: Some(zip_path),
+            opts: InstallOptions {
+                packages: vec!["test-app".to_string(), "other".to_string()],
+                bin_name: None,
+                local: Some(zip_path),
+                one_bin: false,
+                prefer_musl: false,
+                interactive: false,
+                filter: vec![],
+                name: None,
+                pre_release: false,
+                sort: SortParam::default(),
+            },
             quiet: true,
-            one_bin: false,
-            prefer_musl: false,
             dry_run: false,
-            pre_release: false,
-            interactive: false,
-            filter: vec![],
-            name: None,
-            sort: SortParam::default(),
         },
         config: None,
     };

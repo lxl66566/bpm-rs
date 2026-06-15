@@ -2,27 +2,27 @@ use anyhow::{Result, anyhow, ensure};
 use log::{debug, error, info};
 
 use crate::{
-    cli::SortParam,
+    cli::InstallOptions,
     context::Context,
     installation::{Installation, download, unzip},
     search::Searchable,
     storage::{LibcPref, Repo, RepoList, db::DbOperation},
 };
 
-#[allow(clippy::too_many_arguments)]
-pub async fn cli_install(
-    ctx: &Context,
-    packages: Vec<String>,
-    bin_name: Option<String>,
-    local: Option<std::path::PathBuf>,
-    one_bin: bool,
-    prefer_musl: bool,
-    interactive: bool,
-    filter: Vec<String>,
-    name: Option<String>,
-    pre_release: bool,
-    sort: SortParam,
-) -> Result<()> {
+pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
+    let InstallOptions {
+        packages,
+        name,
+        bin_name,
+        local,
+        one_bin,
+        prefer_musl,
+        interactive,
+        filter,
+        pre_release,
+        sort,
+    } = opts;
+
     ensure!(
         !interactive || !ctx.quiet,
         "Cannot use both --interactive and --quiet."

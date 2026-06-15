@@ -65,6 +65,31 @@ impl fmt::Display for Site {
     }
 }
 
+/// Preference for libc variant when selecting assets.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LibcPref {
+    #[default]
+    Gnu,
+    Musl,
+}
+
+impl LibcPref {
+    /// Returns the keyword used in asset filenames.
+    #[must_use]
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Self::Gnu => "gnu",
+            Self::Musl => "musl",
+        }
+    }
+
+    #[must_use]
+    pub fn is_gnu(&self) -> bool {
+        matches!(self, Self::Gnu)
+    }
+}
+
 fn null_to_empty_vec<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
@@ -78,15 +103,6 @@ where
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(b: &bool) -> bool {
     !(*b)
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_true(b: &bool) -> bool {
-    *b
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -104,18 +120,13 @@ pub struct Repo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_time: Option<std::time::SystemTime>,
 
-    /// Prefer musl builds over gnu when selecting assets (default: prefer gnu)
+    /// Preference for libc variant (default: gnu)
+    #[serde(default, skip_serializing_if = "LibcPref::is_gnu")]
+    pub libc_pref: LibcPref,
+
+    /// Include pre-release versions when selecting assets
     #[serde(default, skip_serializing_if = "is_false")]
-    pub prefer_musl: bool,
-
-    /// Backward compatibility: old db may have `prefer_gnu` field.
-    /// `prefer_gnu: true` meant prefer gnu (now the default, so no-op).
-    /// Read during deserialization but never serialized.
-    #[serde(default, skip_serializing)]
-    pub prefer_gnu: bool,
-
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
-    pub no_pre: bool,
+    pub allow_pre: bool,
 
     #[serde(default, skip_serializing_if = "is_false")]
     pub one_bin: bool,

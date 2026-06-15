@@ -6,7 +6,7 @@ use crate::{
     context::Context,
     installation::{Installation, download, unzip},
     search::Searchable,
-    storage::{Repo, RepoList, db::DbOperation},
+    storage::{LibcPref, Repo, RepoList, db::DbOperation},
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -42,11 +42,16 @@ pub async fn cli_install(
     }
 
     let db = ctx.db()?;
+    let libc_pref = if prefer_musl {
+        LibcPref::Musl
+    } else {
+        LibcPref::Gnu
+    };
     let repo_list = build_repo_list(
         packages,
         bin_name.as_ref(),
         one_bin,
-        prefer_musl,
+        libc_pref,
         filter,
         name,
         pre_release,
@@ -194,7 +199,7 @@ fn build_repo_list(
     packages: Vec<String>,
     bin_name: Option<&String>,
     one_bin: bool,
-    prefer_musl: bool,
+    libc_pref: LibcPref,
     filter: Vec<String>,
     name: Option<String>,
     pre_release: bool,
@@ -210,8 +215,8 @@ fn build_repo_list(
                 repo = repo.with_bin_name(bn.clone());
             }
             repo.one_bin = one_bin;
-            repo.prefer_musl = prefer_musl;
-            repo.no_pre = !pre_release;
+            repo.libc_pref = libc_pref;
+            repo.allow_pre = pre_release;
             if !filter.is_empty() {
                 repo.asset_filter = filter.clone();
             }

@@ -57,7 +57,7 @@ impl Repo {
             bail!("repo_name not set");
         };
 
-        let per_page = if self.no_pre { "100" } else { "1" };
+        let per_page = if self.allow_pre { "1" } else { "100" };
         let api = Url::parse_with_params(
             self.site
                 .api_base()
@@ -77,12 +77,12 @@ impl Repo {
             .as_array()
             .ok_or_else(|| anyhow!("Expected array from releases endpoint"))?;
 
-        let raw = if self.no_pre {
+        let raw = if self.allow_pre {
+            raw_releases.first()
+        } else {
             raw_releases
                 .iter()
                 .find(|r| r["prerelease"].as_bool() == Some(false))
-        } else {
-            raw_releases.first()
         };
         let raw = raw.ok_or_else(|| {
             anyhow!("No release asset found for {owner}/{name}. The repo may have no releases.")
@@ -112,7 +112,7 @@ impl Repo {
         };
 
         let selected = architecture_select::select(filtered);
-        let preferred_kw = if self.prefer_musl { "musl" } else { "gnu" };
+        let preferred_kw = self.libc_pref.keyword();
         let mut selected = architecture_select::sort_list(
             selected,
             &[(preferred_kw, architecture_select::MatchPos::All)],

@@ -14,7 +14,7 @@ version     = "0.1.1"
 
 [dependencies]
 anyhow              = "1.0"
-architecture-select = { version = "0.1.0", path = "architecture-select" }
+architecture-select = { version = "0.2.0", path = "architecture-select" }
 brotli              = "8"
 bzip2               = "0.6"
 bzip3               = { version = "0.12", features = ["bundled"] }

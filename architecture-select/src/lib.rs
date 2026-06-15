@@ -95,26 +95,30 @@ impl MatchPos {
 fn match_inner(
     item: &str,
     prompts_with_match_pos: &[(&str, MatchPos)],
-    combination: Option<Combination>,
-    case_sensitive: Option<bool>,
+    combination: Combination,
+    case_sensitive: bool,
 ) -> bool {
-    prompts_with_match_pos.iter().any_or_all(
-        combination.unwrap_or_default(),
-        |(prompt, match_position)| {
-            if case_sensitive.unwrap_or(false) {
-                match_position.exec(item.to_lowercase().as_str(), prompt.to_lowercase().as_str())
-            } else {
+    prompts_with_match_pos
+        .iter()
+        .any_or_all(combination, |(prompt, match_position)| {
+            if case_sensitive {
                 match_position.exec(item, prompt)
+            } else {
+                match_position.exec(&item.to_lowercase(), &prompt.to_lowercase())
             }
-        },
-    )
+        })
 }
 
+/// Filter items by matching against prompts.
+///
+/// # Arguments
+/// * `combination` - All: every prompt must match. Any: at least one prompt matches.
+/// * `case_sensitive` - true: exact case. false: case-insensitive (default in [`select`]).
 pub fn select_list<S: AsRef<str>>(
     select_list: impl IntoIterator<Item = S>,
     prompts_with_match_pos: &[(&str, MatchPos)],
-    combination: Option<Combination>,
-    case_sensitive: Option<bool>,
+    combination: Combination,
+    case_sensitive: bool,
 ) -> Vec<S> {
     select_list
         .into_iter()
@@ -129,12 +133,18 @@ pub fn select_list<S: AsRef<str>>(
         .collect()
 }
 
+/// Sort items so that matching items come first (or last if `reverse`).
+///
+/// # Arguments
+/// * `combination` - All: every prompt must match. Any: at least one matches.
+/// * `case_sensitive` - true: exact case. false: case-insensitive.
+/// * `reverse` - true: matching items go to the end.
 pub fn sort_list<S: AsRef<str>>(
     mut sort_list: Vec<S>,
     prompts_with_match_pos: &[(&str, MatchPos)],
-    combination: Option<Combination>,
-    case_sensitive: Option<bool>,
-    reverse: Option<bool>,
+    combination: Combination,
+    case_sensitive: bool,
+    reverse: bool,
 ) -> Vec<S> {
     sort_list.sort_by_key(|item| {
         !match_inner(
@@ -144,28 +154,39 @@ pub fn sort_list<S: AsRef<str>>(
             case_sensitive,
         )
     });
-    if reverse.unwrap_or(false) {
+    if reverse {
         sort_list.reverse();
     }
     sort_list
 }
 
+/// Select the best match item from assets based on current platform and architecture.
 pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
-    // Select platform
-    let assets = select_list(assets, platform_markers_with_pos().as_ref(), None, None);
+    // Select platform (case-insensitive)
+    let assets = select_list(
+        assets,
+        &platform_markers_with_pos(),
+        Combination::Any,
+        false,
+    );
 
-    // Select architecture
-    let assets = select_list(assets, architecture_markers_with_pos().as_ref(), None, None);
+    // Select architecture (case-insensitive)
+    let assets = select_list(
+        assets,
+        &architecture_markers_with_pos(),
+        Combination::Any,
+        false,
+    );
 
-    // I don't want these suffix
+    // Sort unwanted suffixes to the end
     sort_list(
         assets,
-        [".pdb", ".dll", ".txt", ".checksum", ".sha", ".sha256"]
+        &[".pdb", ".dll", ".txt", ".checksum", ".sha", ".sha256"]
             .map(|item| (item, MatchPos::End))
             .as_ref(),
-        None,
-        None,
-        Some(true),
+        Combination::Any,
+        false,
+        true,
     )
 }
 
@@ -195,32 +216,56 @@ mod tests {
     }
 
     #[test]
-    fn test_match_inner() {
+    fn test_match_inner_case_insensitive() {
+        assert!(match_inner(
+            "asdFoo123",
+            &[("foo", MatchPos::All)],
+            Combination::Any,
+            false,
+        ));
+        assert!(match_inner(
+            "ASDFOO123",
+            &[("foo", MatchPos::All)],
+            Combination::Any,
+            false,
+        ));
+    }
+
+    #[test]
+    fn test_match_inner_case_sensitive() {
         assert!(match_inner(
             "asdfoo123",
             &[("foo", MatchPos::All)],
-            None,
-            None
+            Combination::Any,
+            true,
         ));
+        assert!(!match_inner(
+            "ASDFOO123",
+            &[("foo", MatchPos::All)],
+            Combination::Any,
+            true,
+        ));
+    }
 
+    #[test]
+    fn test_match_inner_positions() {
         assert!(!match_inner(
             "asdfoo123",
             &[("foo", MatchPos::Begin)],
-            None,
-            None
+            Combination::Any,
+            false,
         ));
         assert!(match_inner(
             "asdfoo123",
             &[("asd", MatchPos::Begin)],
-            None,
-            None
+            Combination::Any,
+            false,
         ));
-
         assert!(match_inner(
             "asdfoo123",
             &[("123", MatchPos::End)],
-            None,
-            None
+            Combination::Any,
+            false,
         ));
     }
 
@@ -230,7 +275,12 @@ mod tests {
             .map(ToOwned::to_owned)
             .to_vec();
 
-        let select = select_list(assets, platform_markers_with_pos().as_ref(), None, None);
+        let select = select_list(
+            assets,
+            &platform_markers_with_pos(),
+            Combination::Any,
+            false,
+        );
         assert!(!select.is_empty());
         if cfg!(windows) {
             assert_eq!(select[0], "65windowsasd");
@@ -244,7 +294,7 @@ mod tests {
     #[test]
     fn test_sort_list() {
         let assets = ["foo", "bar", "baz"].map(ToOwned::to_owned).to_vec();
-        let sorted = sort_list(assets, &[("a", MatchPos::All)], None, None, None);
+        let sorted = sort_list(assets, &[("a", MatchPos::All)], Combination::Any, false, false);
         assert_eq!(sorted, ["bar", "baz", "foo"]);
     }
 

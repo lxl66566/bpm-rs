@@ -112,13 +112,38 @@ impl Repo {
         };
 
         let selected = architecture_select::select(filtered);
+
+        // Sort preferred libc variant to the front
         let preferred_kw = self.libc_pref.keyword();
         let mut selected = architecture_select::sort_list(
             selected,
             &[(preferred_kw, architecture_select::MatchPos::All)],
-            None,
-            None,
-            None,
+            architecture_select::Combination::Any,
+            false,
+            false,
+        );
+
+        // Sort natively supported archive formats to the front, unsupported
+        // formats (e.g. .deb, .rpm, .dmg, .AppImage) to the back so we pick
+        // something bpm can actually extract.
+        let supported_exts = [
+            (".tar.gz", architecture_select::MatchPos::End),
+            (".tar.xz", architecture_select::MatchPos::End),
+            (".tar.zst", architecture_select::MatchPos::End),
+            (".tar.bz2", architecture_select::MatchPos::End),
+            (".tar", architecture_select::MatchPos::End),
+            (".zip", architecture_select::MatchPos::End),
+            (".7z", architecture_select::MatchPos::End),
+            (".gz", architecture_select::MatchPos::End),
+            (".zst", architecture_select::MatchPos::End),
+            (".xz", architecture_select::MatchPos::End),
+        ];
+        selected = architecture_select::sort_list(
+            selected,
+            &supported_exts,
+            architecture_select::Combination::Any,
+            false,
+            false,
         );
 
         if interactive && selected.len() > 1 {

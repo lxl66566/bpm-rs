@@ -10,6 +10,9 @@ pub struct Cli {
     /// Path to the config file
     #[arg(short, long, value_hint(ValueHint::FilePath))]
     pub config: Option<PathBuf>,
+    /// Unix install prefix (default: /usr for root, ~/.local for non-root)
+    #[arg(long, global = true, value_hint(ValueHint::DirPath))]
+    pub prefix: Option<PathBuf>,
 }
 
 /// Options shared by install and update for selecting and downloading assets.

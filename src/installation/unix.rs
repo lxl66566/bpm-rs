@@ -37,22 +37,35 @@ pub fn restore_old(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Determines installation target paths based on whether the user is root.
+/// Determines installation target paths based on whether the user is root
+/// or a custom prefix is provided.
 pub struct UnixPaths {
     root: PathBuf,
 }
 
 impl UnixPaths {
     #[must_use]
-    pub fn new() -> Self {
-        let root = if crate::utils::is_root() {
-            PathBuf::from("/usr")
-        } else {
-            home::home_dir()
-                .expect("Failed to get home directory")
-                .join(".local")
+    pub fn new(prefix: Option<&Path>) -> Self {
+        let root = match prefix {
+            Some(p) => p.to_path_buf(),
+            None => {
+                if crate::utils::is_root() {
+                    PathBuf::from("/usr")
+                } else {
+                    home::home_dir()
+                        .expect("Failed to get home directory")
+                        .join(".local")
+                }
+            }
         };
         Self { root }
+    }
+
+    /// The root prefix for all installation targets (e.g. /usr, ~/.local, or custom).
+    #[inline]
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     #[inline]
@@ -94,7 +107,7 @@ impl UnixPaths {
 
 impl Default for UnixPaths {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -199,7 +212,7 @@ fn install_completions(
 impl Installation for Repo {
     fn install(&mut self, src: impl AsRef<Path>, ctx: &Context) -> Result<()> {
         let src = src.as_ref();
-        let unix_paths = UnixPaths::new();
+        let unix_paths = UnixPaths::new(ctx.prefix());
         let dry_run = ctx.dry_run;
         let first_layer: Vec<_> = std::fs::read_dir(src)?
             .filter_map(|e| e.ok())
@@ -245,7 +258,7 @@ impl Installation for Repo {
             match name.as_ref() {
                 "usr" => merge_dir(
                     file,
-                    &PathBuf::from("/usr"),
+                    unix_paths.root(),
                     dry_run,
                     &mut self.installed_files,
                 )?,
@@ -359,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_unix_paths_generation() {
-        let paths = UnixPaths::new();
+        let paths = UnixPaths::new(None);
         assert!(paths.bin().ends_with("bin"));
         assert!(paths.lib().ends_with("lib"));
         assert!(paths.share().ends_with("share"));

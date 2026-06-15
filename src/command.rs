@@ -37,8 +37,8 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
     );
 
     #[cfg(unix)]
-    if !ctx.dry_run {
-        crate::utils::check_root()?;
+    if !ctx.dry_run && !crate::utils::is_root() && ctx.prefix().is_none() {
+        log::info!("Running without root; installing to ~/.local. Use --prefix to override.");
     }
 
     let db = ctx.db()?;
@@ -257,9 +257,6 @@ pub async fn install_single(
 }
 
 pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Result<()> {
-    #[cfg(unix)]
-    crate::utils::check_root()?;
-
     let db = ctx.db()?;
     let mut failed = Vec::new();
 
@@ -297,9 +294,6 @@ pub async fn cli_update(
     local: Option<std::path::PathBuf>,
     interactive: bool,
 ) -> Result<()> {
-    #[cfg(unix)]
-    crate::utils::check_root()?;
-
     let db = ctx.db()?;
     let mut failed = Vec::new();
     let all_repos = db.get_repo_list();

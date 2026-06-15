@@ -9,6 +9,6 @@ use log::log_init;
 async fn main() -> Result<()> {
     log_init();
     let cli = Cli::parse();
-    let ctx = Context::new();
+    let ctx = Context::new().with_prefix(cli.prefix.clone());
     dispatch(cli, ctx).await
 }

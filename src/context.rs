@@ -10,6 +10,8 @@ pub struct Context {
     pub quiet: bool,
     install_position: PathBuf,
     db_path: PathBuf,
+    /// Unix install prefix. None = auto-detect (/usr for root, ~/.local for non-root).
+    prefix: Option<PathBuf>,
 }
 
 impl Default for Context {
@@ -22,6 +24,7 @@ impl Default for Context {
             quiet: false,
             install_position,
             db_path,
+            prefix: None,
         }
     }
 }
@@ -53,6 +56,14 @@ impl Context {
     #[must_use]
     pub fn with_db_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.db_path = path.into();
+        self
+    }
+
+    /// Set the Unix install prefix (e.g. /usr/local, ~/.local).
+    /// When None, the prefix is auto-detected: /usr for root, ~/.local for non-root.
+    #[must_use]
+    pub fn with_prefix(mut self, prefix: Option<PathBuf>) -> Self {
+        self.prefix = prefix;
         self
     }
 
@@ -89,6 +100,14 @@ impl Context {
     #[must_use]
     pub fn shim_exe(&self) -> PathBuf {
         self.install_position.join("shim.exe")
+    }
+
+    /// Returns the Unix install prefix if set.
+    #[cfg(unix)]
+    #[inline]
+    #[must_use]
+    pub fn prefix(&self) -> Option<&Path> {
+        self.prefix.as_deref()
     }
 }
 

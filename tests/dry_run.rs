@@ -26,6 +26,7 @@ fn install_cli(zip_path: &std::path::Path, dry_run: bool) -> Cli {
             dry_run,
         },
         config: None,
+        prefix: None,
     }
 }
 
@@ -70,6 +71,7 @@ async fn dry_run_context_remove_keeps_files() {
             soft: false,
         },
         config: None,
+        prefix: None,
     };
 
     let ctx = env.ctx().with_dry_run(true);

@@ -361,4 +361,91 @@ mod tests {
         let result = repo.ask(vec!["https://github.com/a/b".to_string()], true);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_select_asset_with_filter() {
+        let mut repo = Repo::new("test-pkg");
+        repo.repo_owner = Some("owner".to_string());
+        repo.repo_name = Some("repo".to_string());
+
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let release = Release {
+                tag: "v1.0.0".to_string(),
+                assets: vec![
+                    Asset { url: "https://example.com/test-linux-amd64.deb".to_string() },
+                    Asset { url: "https://example.com/test-linux-amd64.tar.gz".to_string() },
+                    Asset { url: "https://example.com/test-linux-amd64.zip".to_string() },
+                ],
+            };
+
+            // Without filter: should pick a supported format
+            let selected = repo.select_asset(&release, false).unwrap();
+            assert!(selected.ends_with(".tar.gz") || selected.ends_with(".zip"));
+
+            // With filter: should narrow to .zip only
+            repo.asset_filter = vec![".zip".to_string()];
+            let selected = repo.select_asset(&release, false).unwrap();
+            assert!(selected.ends_with(".zip"));
+        }
+    }
+
+    #[test]
+    fn test_select_asset_empty_release() {
+        let repo = Repo::new("test-pkg");
+        let release = Release {
+            tag: "v1.0.0".to_string(),
+            assets: vec![],
+        };
+        let result = repo.select_asset(&release, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_asset_url_replacement() {
+        // Test the URL string replacement logic used in the fast path
+        let old_asset = "https://github.com/owner/repo/releases/download/v1.0.0/asset-linux-amd64.tar.gz";
+        let old_version = "v1.0.0";
+        let new_version = "v2.0.0";
+
+        let candidate = old_asset.replace(old_version, new_version);
+        assert_eq!(
+            candidate,
+            "https://github.com/owner/repo/releases/download/v2.0.0/asset-linux-amd64.tar.gz"
+        );
+        assert_ne!(candidate, old_asset);
+    }
+
+    #[test]
+    fn test_parse_github_release_valid() {
+        let raw = serde_json::json!({
+            "tag_name": "v1.2.3",
+            "assets": [
+                {"browser_download_url": "https://example.com/asset1.zip"},
+                {"browser_download_url": "https://example.com/asset2.tar.gz"},
+            ]
+        });
+        let release = parse_github_release(&raw, "owner", "repo").unwrap();
+        assert_eq!(release.tag, "v1.2.3");
+        assert_eq!(release.assets.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_github_release_no_assets() {
+        let raw = serde_json::json!({
+            "tag_name": "v1.0.0",
+            "assets": []
+        });
+        let result = parse_github_release(&raw, "owner", "repo");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_github_release_no_tag() {
+        let raw = serde_json::json!({
+            "assets": [{"browser_download_url": "https://example.com/a.zip"}]
+        });
+        let result = parse_github_release(&raw, "owner", "repo");
+        assert!(result.is_err());
+    }
 }

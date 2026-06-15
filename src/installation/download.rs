@@ -71,6 +71,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires network access to GitHub"]
     async fn test_download() {
         let tempdir = tempfile::tempdir().unwrap();
         let mut repo = Repo::new("download_test");

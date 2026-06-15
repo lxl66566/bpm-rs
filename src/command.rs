@@ -161,7 +161,8 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
     let downloaded = download::download(repo_refs, download_tmp.path()).await?;
     ensure!(!downloaded.is_empty(), "No files downloaded.");
 
-    // Phase 5: Unzip and install each repo
+    // Phase 5: Unzip and install each repo (two-phase: install all, then commit DB)
+    let mut installed: Vec<Repo> = Vec::with_capacity(repos.len());
     for mut repo in repos {
         let file = downloaded
             .iter()
@@ -175,20 +176,31 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
         match repo.install(&main_path, ctx) {
             Ok(()) => {
                 info!("`{}` installed successfully.", repo.name);
-                if !ctx.dry_run {
-                    repo.interactive = interactive;
-                    db.insert_repo(repo)?;
-                }
+                repo.interactive = interactive;
+                installed.push(repo);
             }
             Err(e) => {
                 error!("Failed to install `{}`: {e}", repo.name);
                 if !ctx.dry_run {
-                    info!("Restoring...");
+                    info!(
+                        "Rolling back {} previously installed package(s)...",
+                        installed.len()
+                    );
+                    for mut r in installed {
+                        let _ = r.uninstall(ctx);
+                    }
                     let mut repo_for_cleanup = repo.clone();
                     let _ = repo_for_cleanup.uninstall(ctx);
                 }
                 return Err(e);
             }
+        }
+    }
+
+    // Commit: all installations succeeded, now persist to DB
+    if !ctx.dry_run {
+        for repo in installed {
+            db.insert_repo(repo)?;
         }
     }
 
@@ -314,53 +326,70 @@ pub async fn cli_update(
             .collect()
     };
 
-    let total = to_update.len();
-    for mut repo in to_update {
-        let repo_name = repo.name.clone();
+    // Separate local and remote repos
+    let (local_repos, remote_repos): (Vec<Repo>, Vec<Repo>) = to_update
+        .into_iter()
+        .partition(|r| r.local);
 
-        // Packages installed from local require --local to update
-        if repo.local {
-            if let Some(local_path) = &local {
-                info!("Updating `{repo_name}` from local path...");
-                match install_single(ctx, &mut repo, Some(local_path)).await {
-                    Ok(()) => {
-                        db.insert_repo(repo)?;
-                        info!("`{repo_name}` updated successfully.");
-                    }
-                    Err(e) => {
-                        failed.push(repo_name.clone());
-                        error!("Failed to update {repo_name}: {e}");
-                    }
+    let total = local_repos.len() + remote_repos.len();
+
+    // Phase 1: Handle local repos sequentially (need --local flag)
+    for mut repo in local_repos {
+        let repo_name = repo.name.clone();
+        if let Some(local_path) = &local {
+            info!("Updating `{repo_name}` from local path...");
+            match install_single(ctx, &mut repo, Some(local_path)).await {
+                Ok(()) => {
+                    db.insert_repo(repo)?;
+                    info!("`{repo_name}` updated successfully.");
                 }
-            } else {
-                error!(
-                    "`{repo_name}` was installed from a local path. Use --local to specify the path for update."
-                );
-                failed.push(repo_name);
+                Err(e) => {
+                    failed.push(repo_name.clone());
+                    error!("Failed to update {repo_name}: {e}");
+                }
             }
-            continue;
+        } else {
+            error!(
+                "`{repo_name}` was installed from a local path. Use --local to specify the path for update."
+            );
+            failed.push(repo_name);
+        }
+    }
+
+    // Phase 2: Parallel check for updates (network-bound)
+    if !remote_repos.is_empty() {
+        let mut tasks = tokio::task::JoinSet::new();
+        for mut repo in remote_repos {
+            let use_interactive = interactive || repo.interactive;
+            tasks.spawn(async move {
+                let update_result = repo.update_asset(use_interactive).await;
+                (repo, update_result)
+            });
         }
 
-        let use_interactive = interactive || repo.interactive;
+        // Phase 3: Sequential install for repos that have updates
+        while let Some(res) = tasks.join_next().await {
+            let (mut repo, update_result) = res?;
+            let repo_name = repo.name.clone();
 
-        info!("Updating `{repo_name}`...");
-        match repo.update_asset(use_interactive).await {
-            Some((old, new)) => {
-                info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
-                match install_single(ctx, &mut repo, None).await {
-                    Ok(()) => {
-                        repo.version = Some(new);
-                        db.insert_repo(repo)?;
-                        info!("`{repo_name}` updated successfully.");
-                    }
-                    Err(e) => {
-                        failed.push(repo_name.clone());
-                        error!("Failed to update {repo_name}: {e}");
+            match update_result {
+                Some((old, new)) => {
+                    info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
+                    match install_single(ctx, &mut repo, None).await {
+                        Ok(()) => {
+                            repo.version = Some(new);
+                            db.insert_repo(repo)?;
+                            info!("`{repo_name}` updated successfully.");
+                        }
+                        Err(e) => {
+                            failed.push(repo_name.clone());
+                            error!("Failed to update {repo_name}: {e}");
+                        }
                     }
                 }
-            }
-            None => {
-                info!("`{repo_name}` is already up to date.");
+                None => {
+                    info!("`{repo_name}` is already up to date.");
+                }
             }
         }
     }

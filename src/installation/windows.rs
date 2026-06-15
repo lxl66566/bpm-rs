@@ -66,6 +66,13 @@ impl Installation for Repo {
         let src = src.as_ref();
 
         if check_and_install_msi(src, ctx.dry_run)? {
+            warn!(
+                "MSI package '{}' was installed silently via msiexec. \
+                 bpm cannot track or uninstall MSI-installed files — \
+                 use Windows Settings > Apps to uninstall.",
+                self.name
+            );
+            self.is_msi = true;
             if !ctx.dry_run {
                 ctx.db()?.insert_repo(self.clone())?;
             }

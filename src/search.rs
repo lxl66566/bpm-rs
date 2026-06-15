@@ -8,10 +8,24 @@ use url::Url;
 
 use crate::{cli::SortParam, storage::Repo, utils::UrlJoinAll};
 
-static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    let mut headers = reqwest::header::HeaderMap::new();
+
+    // GitHub API version header
+    headers.insert("X-GitHub-Api-Version", reqwest::header::HeaderValue::from_static("2022-11-28"));
+
+    // Read token from GITHUB_TOKEN or GH_TOKEN environment variable
+    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN"))
+        && let Ok(value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+    {
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+        debug!("Using GitHub token from environment for higher API rate limit");
+    }
+
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
+        .default_headers(headers)
         .build()
         .expect("Failed to build HTTP client")
 });
@@ -182,8 +196,19 @@ fn parse_github_release(raw: &serde_json::Value, owner: &str, name: &str) -> Res
 }
 
 async fn check_url_exists(url: &str) -> bool {
-    REQUEST_CLIENT
+    // Try HEAD first (lightweight), fall back to ranged GET for CDNs/proxies
+    // that don't support HEAD.
+    if REQUEST_CLIENT
         .head(url)
+        .send()
+        .await
+        .is_ok_and(|r| r.status().is_success())
+    {
+        return true;
+    }
+    REQUEST_CLIENT
+        .get(url)
+        .header("Range", "bytes=0-0")
         .send()
         .await
         .is_ok_and(|r| r.status().is_success())

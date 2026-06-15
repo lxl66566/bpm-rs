@@ -14,6 +14,28 @@ pub struct Db {
     pub repo_list: Mutex<RepoList>,
 }
 
+impl Db {
+    /// Atomically persist the repo list to disk.
+    ///
+    /// Writes to a temporary file first, then renames it to the final path.
+    /// This prevents DB corruption if the process is killed mid-write.
+    fn store_atomic(&self) -> anyhow::Result<()> {
+        // Preserve the original extension so config-file2 can detect the format.
+        // e.g. db.json -> db.tmp.json -> rename to db.json
+        let tmp_path = {
+            let stem = self.db_path.file_stem().unwrap_or_default();
+            let tmp_name = match self.db_path.extension() {
+                Some(ext) => format!("{}.tmp.{}", stem.to_string_lossy(), ext.to_string_lossy()),
+                None => format!("{}.tmp", stem.to_string_lossy()),
+            };
+            self.db_path.with_file_name(tmp_name)
+        };
+        self.repo_list.lock().unwrap().store(&tmp_path)?;
+        std::fs::rename(&tmp_path, &self.db_path)?;
+        Ok(())
+    }
+}
+
 impl DbOperation for Db {
     fn create_or_open(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self>
     where
@@ -39,7 +61,7 @@ impl DbOperation for Db {
 
     fn insert_repo(&self, repo: Repo) -> anyhow::Result<()> {
         self.repo_list.lock().unwrap().push(repo);
-        self.repo_list.store(&self.db_path)?;
+        self.store_atomic()?;
         Ok(())
     }
 
@@ -48,7 +70,7 @@ impl DbOperation for Db {
             .lock()
             .unwrap()
             .retain(|x| x.name != name);
-        self.repo_list.store(&self.db_path)?;
+        self.store_atomic()?;
         Ok(())
     }
 }

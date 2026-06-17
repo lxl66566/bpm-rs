@@ -62,7 +62,12 @@ if [ "$(id -u)" -ne 0 ]; then
 	echo "Warning: bpm requires root privileges on Unix. Re-run with sudo if installation fails." >&2
 fi
 
-echo "Installing bpm..."
-"$BPM" install --local "$TMP/pkg.tar.gz" bpm
+if command -v bpm >/dev/null 2>&1 && bpm info --json bpm 2>/dev/null | grep -q '"name":[[:space:]]*"bpm"'; then
+	echo "Updating bpm..."
+	bpm update bpm --local "$TMP/pkg.tar.gz"
+else
+	echo "Installing bpm..."
+	"$BPM" install --local "$TMP/pkg.tar.gz" bpm
+fi
 
-echo "bpm installed! Run 'bpm --help' to get started."
+echo "bpm ready! Run 'bpm --help' to get started."

@@ -38,7 +38,24 @@ if (-not $BpmExe) {
     exit 1
 }
 
-Write-Host "Installing bpm..."
-& $BpmExe install --local $Zip bpm
+# Check if bpm is already installed and managed by bpm
+$bpmInstalled = $null -ne (Get-Command bpm -ErrorAction SilentlyContinue)
+$bpmInDb = $false
+if ($bpmInstalled) {
+    try {
+        $info = & bpm info --json bpm 2>$null | ConvertFrom-Json
+        $bpmInDb = $info.name -eq "bpm"
+    } catch {
+        # bpm not in database
+    }
+}
 
-Write-Host "bpm installed! Run 'bpm --help' to get started."
+if ($bpmInDb) {
+    Write-Host "Updating bpm..."
+    & bpm update bpm --local $Zip
+} else {
+    Write-Host "Installing bpm..."
+    & $BpmExe install --local $Zip bpm
+}
+
+Write-Host "bpm ready! Run 'bpm --help' to get started."

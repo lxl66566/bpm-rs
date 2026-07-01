@@ -302,6 +302,20 @@ impl RepoList {
         self.0.push(repo);
     }
 
+    /// Insert or replace a repo matched by name (upsert).
+    ///
+    /// If a repo with the same name already exists it is replaced in place,
+    /// otherwise the new repo is appended. This keeps the list free of
+    /// duplicates and is what makes `update` overwrite the previous record
+    /// instead of creating a new one.
+    pub fn upsert(&mut self, repo: Repo) {
+        if let Some(existing) = self.0.iter_mut().find(|x| x.name == repo.name) {
+            *existing = repo;
+        } else {
+            self.0.push(repo);
+        }
+    }
+
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&Repo) -> bool,
@@ -400,5 +414,61 @@ mod tests {
         ]);
         let s = format!("{list}");
         println!("{s}");
+    }
+
+    #[test]
+    fn test_upsert_inserts_new_repo() {
+        let mut list = RepoList::default();
+        list.upsert(Repo::new("foo"));
+        list.upsert(Repo::new("bar"));
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn test_upsert_replaces_existing_repo() {
+        let mut list = RepoList::default();
+        list.upsert(
+            Repo::new("foo")
+                .by_url("https://github.com/owner/foo")
+                .unwrap(),
+        );
+
+        // Simulate an update: same name, new version / asset.
+        let mut updated = Repo::new("foo")
+            .by_url("https://github.com/owner/foo")
+            .unwrap();
+        updated.version = Some("v2.0.0".into());
+        list.upsert(updated);
+
+        // No duplicate should be created.
+        assert_eq!(list.len(), 1);
+        let repos: Vec<&Repo> = list.iter().collect();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].name, "foo");
+        assert_eq!(repos[0].version.as_deref(), Some("v2.0.0"));
+    }
+
+    #[test]
+    fn test_upsert_preserves_unrelated_repos() {
+        let mut list = RepoList::default();
+        list.upsert(Repo::new("a"));
+        list.upsert(Repo::new("b"));
+        list.upsert(Repo::new("c"));
+
+        let mut updated_b = Repo::new("b");
+        updated_b.version = Some("v9".into());
+        list.upsert(updated_b);
+
+        assert_eq!(list.len(), 3);
+        let names: Vec<&str> = list.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+        assert_eq!(
+            list.iter()
+                .find(|r| r.name == "b")
+                .unwrap()
+                .version
+                .as_deref(),
+            Some("v9")
+        );
     }
 }

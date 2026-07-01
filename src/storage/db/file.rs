@@ -60,7 +60,9 @@ impl DbOperation for Db {
     }
 
     fn insert_repo(&self, repo: Repo) -> anyhow::Result<()> {
-        self.repo_list.lock().unwrap().push(repo);
+        // Upsert by name so that updating an already-tracked repo overwrites
+        // its previous record instead of appending a duplicate entry.
+        self.repo_list.lock().unwrap().upsert(repo);
         self.store_atomic()?;
         Ok(())
     }
@@ -132,5 +134,40 @@ mod tests {
         let found = db2.get_repo("persist-test").unwrap();
         assert_eq!(found.repo_owner.unwrap(), "test");
         assert_eq!(found.repo_name.unwrap(), "repo");
+    }
+
+    /// Regression test: `insert_repo` must upsert (overwrite by name) instead
+    /// of always appending. This mirrors what `cli_update` does — it
+    /// re-inserts the same repo after an update — and previously produced
+    /// duplicate entries in the db.
+    #[test]
+    fn db_insert_repo_upsert_no_duplicates() -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, path) = temp_db_path();
+        let db = Db::create_or_open(&path)?;
+
+        let mut repo = Repo::new("abc")
+            .by_url("https://github.com/owner/abc")
+            .unwrap();
+        repo.version = Some("v1.0.0".into());
+        db.insert_repo(repo.clone())?;
+
+        // Simulate an update: bump version then re-insert.
+        let mut updated = repo.clone();
+        updated.version = Some("v2.0.0".into());
+        db.insert_repo(updated)?;
+
+        let all = db.get_repo_list();
+        assert_eq!(all.len(), 1, "update must not create a duplicate repo");
+        let got = db.get_repo("abc").unwrap();
+        assert_eq!(got.version.as_deref(), Some("v2.0.0"));
+
+        // A second, different repo must not be affected.
+        db.insert_repo(
+            Repo::new("xyz")
+                .by_url("https://github.com/owner/xyz")
+                .unwrap(),
+        )?;
+        assert_eq!(db.get_repo_list().len(), 2);
+        Ok(())
     }
 }

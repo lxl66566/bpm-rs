@@ -175,35 +175,105 @@ fn install_completions(
             continue;
         }
 
+        let Some(shell) = detect_completion_shell(src) else {
+            continue;
+        };
+
         let file_name = src.file_name().unwrap();
-        let name_str = file_name.to_string_lossy();
-        let mut dst = None;
+        let dst = match shell {
+            Shell::Fish => paths
+                .share()
+                .join("fish/vendor_completions.d")
+                .join(file_name),
+            Shell::Bash => paths
+                .share()
+                .join("bash-completion/completions")
+                .join(file_name),
+            Shell::Zsh => paths.share().join("zsh/site-functions").join(file_name),
+        };
 
-        if name_str.ends_with(".fish") {
-            dst = Some(
-                paths
-                    .share()
-                    .join("fish/vendor_completions.d")
-                    .join(file_name),
-            );
-        } else if name_str.ends_with(".bash") {
-            dst = Some(
-                paths
-                    .share()
-                    .join("bash-completion/completions")
-                    .join(file_name),
-            );
-        } else if name_str.starts_with('_') {
-            if fs::read_to_string(src).map_or(false, |c| c.contains("zsh")) {
-                dst = Some(paths.share().join("zsh/site-functions").join(file_name));
-            }
-        }
-
-        if let Some(d) = dst {
-            install_file(src, &d, dry_run, Some(0o644), recorder)?;
-        }
+        install_file(src, &dst, dry_run, Some(0o644), recorder)?;
     }
     Ok(())
+}
+
+/// The supported shell completion kinds, each mapped to a dedicated install
+/// directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shell {
+    Fish,
+    Bash,
+    Zsh,
+}
+
+impl Shell {
+    /// Lower-cased directory names that strongly indicate a shell completion
+    /// layout (e.g. `completions/bash/<binary>`).
+    #[must_use]
+    fn from_dir_name(name: &str) -> Option<Self> {
+        match name {
+            "fish" => Some(Self::Fish),
+            "bash" | "bash-completion" => Some(Self::Bash),
+            "zsh" => Some(Self::Zsh),
+            _ => None,
+        }
+    }
+}
+
+/// Detect the shell a completion file belongs to.
+///
+/// Detection order (most precise first):
+/// 1. The immediate parent directory name (`bash`, `fish`, `zsh`, ...) — this
+///    recognizes the common `completions/<shell>/<binary>` layout where files
+///    have no distinguishing extension.
+/// 2. The file extension (`.fish`, `.bash`).
+/// 3. For files prefixed with `_`, a real zsh completion is confirmed by the
+///    canonical `#compdef` marker. Only the first bytes are read so large or
+///    binary files are not slurped into memory, and the check itself is far
+///    more precise than the previous loose "contains zsh" heuristic.
+#[must_use]
+fn detect_completion_shell(src: &Path) -> Option<Shell> {
+    // 1. Parent directory name.
+    if let Some(shell) = src
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .and_then(Shell::from_dir_name)
+    {
+        return Some(shell);
+    }
+
+    let name = src.file_name()?.to_string_lossy();
+
+    // 2. File extension.
+    if name.ends_with(".fish") {
+        return Some(Shell::Fish);
+    }
+    if name.ends_with(".bash") {
+        return Some(Shell::Bash);
+    }
+
+    // 3. zsh: `_`-prefixed files verified via the `#compdef` marker.
+    if name.starts_with('_') && is_zsh_completion(src) {
+        return Some(Shell::Zsh);
+    }
+
+    None
+}
+
+/// Whether `src` looks like a real zsh completion by checking the canonical
+/// `#compdef` directive. Only the leading bytes are inspected so huge or
+/// binary files are never fully read.
+#[must_use]
+fn is_zsh_completion(src: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = fs::File::open(src) else {
+        return false;
+    };
+    let mut head = [0u8; 512];
+    let n = file.read(&mut head).unwrap_or(0);
+    let head = String::from_utf8_lossy(&head[..n]);
+    head.contains("#compdef")
 }
 
 impl Installation for Repo {
@@ -271,6 +341,14 @@ impl Installation for Repo {
                 "man" => merge_dir(
                     file,
                     &unix_paths.share().join("man"),
+                    dry_run,
+                    &mut self.installed_files,
+                )?,
+                // Locale data (e.g. <lang>/LC_MESSAGES/<pkg>.mo) lives under
+                // share/locale on Linux.
+                "locale" => merge_dir(
+                    file,
+                    &unix_paths.share().join("locale"),
                     dry_run,
                     &mut self.installed_files,
                 )?,
@@ -365,5 +443,155 @@ mod tests {
         assert!(paths.lib().ends_with("lib"));
         assert!(paths.share().ends_with("share"));
         assert!(paths.include().ends_with("include"));
+    }
+
+    #[test]
+    fn test_detect_completion_shell_by_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let fish = root.join("foo.fish");
+        let bash = root.join("foo.bash");
+        fs::write(&fish, "").unwrap();
+        fs::write(&bash, "").unwrap();
+
+        assert_eq!(detect_completion_shell(&fish), Some(Shell::Fish));
+        assert_eq!(detect_completion_shell(&bash), Some(Shell::Bash));
+    }
+
+    #[test]
+    fn test_detect_completion_shell_by_parent_dir() {
+        // Nested layout: completions/<shell>/<binary> without extensions.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let bash_file = root.join("bash").join("foo");
+        let fish_file = root.join("fish").join("foo");
+        let zsh_file = root.join("zsh").join("_foo");
+        fs::create_dir_all(bash_file.parent().unwrap()).unwrap();
+        fs::create_dir_all(fish_file.parent().unwrap()).unwrap();
+        fs::create_dir_all(zsh_file.parent().unwrap()).unwrap();
+        fs::write(&bash_file, "").unwrap();
+        fs::write(&fish_file, "").unwrap();
+        fs::write(&zsh_file, "#compdef foo\n").unwrap();
+
+        // Parent directory detection takes precedence over extension checks.
+        assert_eq!(detect_completion_shell(&bash_file), Some(Shell::Bash));
+        assert_eq!(detect_completion_shell(&fish_file), Some(Shell::Fish));
+        assert_eq!(detect_completion_shell(&zsh_file), Some(Shell::Zsh));
+    }
+
+    #[test]
+    fn test_detect_zsh_requires_compdef_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Real zsh completion: starts with `_` and has `#compdef`.
+        let real = root.join("_foo");
+        fs::write(&real, "#compdef foo\n# the rest...\n").unwrap();
+        assert!(is_zsh_completion(&real));
+        assert_eq!(detect_completion_shell(&real), Some(Shell::Zsh));
+
+        // Imposter: starts with `_` and mentions "zsh" but has no `#compdef`.
+        // The old heuristic ("contains zsh") wrongly accepted this; the new
+        // check must reject it.
+        let imposter = root.join("_bar");
+        fs::write(&imposter, "echo zsh\n").unwrap();
+        assert!(!is_zsh_completion(&imposter));
+        assert_eq!(detect_completion_shell(&imposter), None);
+    }
+
+    #[test]
+    fn test_detect_completion_rejects_unrelated_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let readme = root.join("README.md");
+        let underscore = root.join("_notes"); // no #compdef
+        fs::write(&readme, "docs").unwrap();
+        fs::write(&underscore, "notes").unwrap();
+
+        assert_eq!(detect_completion_shell(&readme), None);
+        assert_eq!(detect_completion_shell(&underscore), None);
+    }
+
+    #[test]
+    fn test_install_completions_records_correct_paths() {
+        // Flat layout under a `completions`-like dir.
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path();
+
+        fs::write(src.join("foo.fish"), "").unwrap();
+        fs::write(src.join("foo.bash"), "").unwrap();
+        fs::write(src.join("_foo"), "#compdef foo\n").unwrap();
+        // Unrelated file must be skipped.
+        fs::write(src.join("README.md"), "ignore me").unwrap();
+
+        let tmp_root = tempfile::tempdir().unwrap();
+        let paths = UnixPaths::new(Some(tmp_root.path()));
+        let mut recorder = Vec::new();
+
+        install_completions(src, &paths, true, &mut recorder).unwrap();
+
+        let share = tmp_root.path().join("share");
+        let expected = [
+            share.join("fish/vendor_completions.d/foo.fish"),
+            share.join("bash-completion/completions/foo.bash"),
+            share.join("zsh/site-functions/_foo"),
+        ];
+        for path in &expected {
+            assert!(
+                recorder.iter().any(|p| p == path),
+                "expected {path:?} in recorder: {recorder:?}"
+            );
+        }
+        // README must not leak into the recorded completions.
+        assert!(
+            !recorder
+                .iter()
+                .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("README.md"))
+        );
+    }
+
+    #[test]
+    fn test_install_merges_locale_folder() {
+        // Build a fake package: a binary (so the multi-file branch runs) and a
+        // locale/ tree that should be merged into share/locale.
+        let pkg = tempfile::tempdir().unwrap();
+        let src = pkg.path();
+
+        let bin = src.join("mybin");
+        fs::write(&bin, "#!/bin/sh\n").unwrap();
+
+        let mo = src
+            .join("locale")
+            .join("en")
+            .join("LC_MESSAGES")
+            .join("mybin.mo");
+        fs::create_dir_all(mo.parent().unwrap()).unwrap();
+        fs::write(&mo, "translated").unwrap();
+
+        let tmp_root = tempfile::tempdir().unwrap();
+        let ctx = Context::new()
+            .with_dry_run(true)
+            .with_prefix(Some(tmp_root.path().to_path_buf()));
+
+        let mut repo = Repo::new("mybin");
+        repo.bin_name = "mybin".into();
+
+        repo.install(src, &ctx).unwrap();
+
+        let expected_mo = tmp_root
+            .path()
+            .join("share")
+            .join("locale")
+            .join("en")
+            .join("LC_MESSAGES")
+            .join("mybin.mo");
+        assert!(
+            repo.installed_files.iter().any(|p| p == &expected_mo),
+            "locale file should be merged into share/locale, got: {:#?}",
+            repo.installed_files
+        );
     }
 }

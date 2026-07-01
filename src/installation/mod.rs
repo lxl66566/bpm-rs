@@ -23,7 +23,11 @@ pub fn only_one_file_in_dir(path: impl AsRef<Path>) -> std::io::Result<Option<Pa
 
 /// Platform-specific installation logic.
 pub trait Installation {
-    fn install(&mut self, src: impl AsRef<Path>, ctx: &crate::context::Context) -> anyhow::Result<()>;
+    fn install(
+        &mut self,
+        src: impl AsRef<Path>,
+        ctx: &crate::context::Context,
+    ) -> anyhow::Result<()>;
     fn uninstall(&mut self, ctx: &crate::context::Context) -> anyhow::Result<()>;
 }
 

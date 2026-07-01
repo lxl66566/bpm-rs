@@ -9,11 +9,7 @@ use log::{debug, info, warn};
 use walkdir::WalkDir;
 
 use super::Installation;
-use crate::{
-    context::Context,
-    storage::Repo,
-    utils::path::PathExt,
-};
+use crate::{context::Context, storage::Repo, utils::path::PathExt};
 
 /// Rename an existing file to `<name>.old` to avoid overwriting.
 pub fn rename_old(path: &Path) -> std::io::Result<()> {
@@ -61,7 +57,8 @@ impl UnixPaths {
         Self { root }
     }
 
-    /// The root prefix for all installation targets (e.g. /usr, ~/.local, or custom).
+    /// The root prefix for all installation targets (e.g. /usr, ~/.local, or
+    /// custom).
     #[inline]
     #[must_use]
     pub fn root(&self) -> &Path {
@@ -256,15 +253,8 @@ impl Installation for Repo {
         for file in &first_layer {
             let name = file.file_name().unwrap_or_default().to_string_lossy();
             match name.as_ref() {
-                "usr" => merge_dir(
-                    file,
-                    unix_paths.root(),
-                    dry_run,
-                    &mut self.installed_files,
-                )?,
-                "lib" => {
-                    merge_dir(file, &unix_paths.lib(), dry_run, &mut self.installed_files)?
-                }
+                "usr" => merge_dir(file, unix_paths.root(), dry_run, &mut self.installed_files)?,
+                "lib" => merge_dir(file, &unix_paths.lib(), dry_run, &mut self.installed_files)?,
                 "include" => merge_dir(
                     file,
                     &unix_paths.include(),
@@ -277,9 +267,7 @@ impl Installation for Repo {
                     dry_run,
                     &mut self.installed_files,
                 )?,
-                "bin" => {
-                    merge_dir(file, &unix_paths.bin(), dry_run, &mut self.installed_files)?
-                }
+                "bin" => merge_dir(file, &unix_paths.bin(), dry_run, &mut self.installed_files)?,
                 "man" => merge_dir(
                     file,
                     &unix_paths.share().join("man"),

@@ -66,10 +66,7 @@ impl DbOperation for Db {
     }
 
     fn remove_repo(&self, name: &str) -> anyhow::Result<()> {
-        self.repo_list
-            .lock()
-            .unwrap()
-            .retain(|x| x.name != name);
+        self.repo_list.lock().unwrap().retain(|x| x.name != name);
         self.store_atomic()?;
         Ok(())
     }
@@ -128,7 +125,7 @@ mod tests {
                     .by_url("https://github.com/test/repo")
                     .unwrap(),
             )
-                .unwrap();
+            .unwrap();
         }
 
         let db2 = Db::create_or_open(&path).unwrap();

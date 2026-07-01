@@ -10,7 +10,8 @@ pub struct Context {
     pub quiet: bool,
     install_position: PathBuf,
     db_path: PathBuf,
-    /// Unix install prefix. None = auto-detect (/usr for root, ~/.local for non-root).
+    /// Unix install prefix. None = auto-detect (/usr for root, ~/.local for
+    /// non-root).
     prefix: Option<PathBuf>,
 }
 
@@ -60,7 +61,8 @@ impl Context {
     }
 
     /// Set the Unix install prefix (e.g. /usr/local, ~/.local).
-    /// When None, the prefix is auto-detected: /usr for root, ~/.local for non-root.
+    /// When None, the prefix is auto-detected: /usr for root, ~/.local for
+    /// non-root.
     #[must_use]
     pub fn with_prefix(mut self, prefix: Option<PathBuf>) -> Self {
         self.prefix = prefix;
@@ -132,7 +134,7 @@ mod tests {
                 .by_url("https://github.com/a/b")
                 .unwrap(),
         )
-            .unwrap();
+        .unwrap();
         assert!(db.get_repo("ctx-test").is_some());
     }
 }

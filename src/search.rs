@@ -12,7 +12,10 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
 
     // GitHub API version header
-    headers.insert("X-GitHub-Api-Version", reqwest::header::HeaderValue::from_static("2022-11-28"));
+    headers.insert(
+        "X-GitHub-Api-Version",
+        reqwest::header::HeaderValue::from_static("2022-11-28"),
+    );
 
     // Read token from GITHUB_TOKEN or GH_TOKEN environment variable
     if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN"))
@@ -162,9 +165,10 @@ impl Repo {
         if interactive && selected.len() > 1 {
             ask_asset_interactive(&selected)
         } else {
-            selected
-                .pop()
-                .context(format!("No valid asset found for '{}'. Try --interactive.", self.name))
+            selected.pop().context(format!(
+                "No valid asset found for '{}'. Try --interactive.",
+                self.name
+            ))
         }
     }
 }
@@ -313,7 +317,10 @@ impl Searchable for Repo {
 }
 
 fn ask_asset_interactive(assets: &[String]) -> Result<String> {
-    let short_names: Vec<&str> = assets.iter().map(|a| a.rsplit('/').next().unwrap_or(a)).collect();
+    let short_names: Vec<&str> = assets
+        .iter()
+        .map(|a| a.rsplit('/').next().unwrap_or(a))
+        .collect();
 
     // Use FuzzySelect for assets (many items, search is helpful)
     let selection = FuzzySelect::new()
@@ -362,9 +369,15 @@ mod tests {
             let release = Release {
                 tag: "v1.0.0".to_string(),
                 assets: vec![
-                    Asset { url: "https://example.com/test-linux-amd64.deb".to_string() },
-                    Asset { url: "https://example.com/test-linux-amd64.tar.gz".to_string() },
-                    Asset { url: "https://example.com/test-linux-amd64.zip".to_string() },
+                    Asset {
+                        url: "https://example.com/test-linux-amd64.deb".to_string(),
+                    },
+                    Asset {
+                        url: "https://example.com/test-linux-amd64.tar.gz".to_string(),
+                    },
+                    Asset {
+                        url: "https://example.com/test-linux-amd64.zip".to_string(),
+                    },
                 ],
             };
 
@@ -393,7 +406,8 @@ mod tests {
     #[test]
     fn test_update_asset_url_replacement() {
         // Test the URL string replacement logic used in the fast path
-        let old_asset = "https://github.com/owner/repo/releases/download/v1.0.0/asset-linux-amd64.tar.gz";
+        let old_asset =
+            "https://github.com/owner/repo/releases/download/v1.0.0/asset-linux-amd64.tar.gz";
         let old_version = "v1.0.0";
         let new_version = "v2.0.0";
 

@@ -327,9 +327,8 @@ pub async fn cli_update(
     };
 
     // Separate local and remote repos
-    let (local_repos, remote_repos): (Vec<Repo>, Vec<Repo>) = to_update
-        .into_iter()
-        .partition(|r| r.local);
+    let (local_repos, remote_repos): (Vec<Repo>, Vec<Repo>) =
+        to_update.into_iter().partition(|r| r.local);
 
     let total = local_repos.len() + remote_repos.len();
 

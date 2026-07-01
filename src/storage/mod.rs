@@ -279,15 +279,7 @@ impl From<&str> for Repo {
     }
 }
 
-#[derive(
-    Debug,
-    Serialize,
-    Deserialize,
-    Clone,
-    PartialEq,
-    Eq,
-    Default,
-)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct RepoList(Vec<Repo>);
 
 impl RepoList {

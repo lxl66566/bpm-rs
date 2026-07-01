@@ -33,9 +33,7 @@ pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
             opts,
             quiet,
             dry_run,
-        } => {
-            cli_install(&ctx.with_dry_run(dry_run).with_quiet(quiet), opts).await
-        }
+        } => cli_install(&ctx.with_dry_run(dry_run).with_quiet(quiet), opts).await,
         SubCommand::Remove { packages, soft } => cli_remove(&ctx, packages, soft).await,
         SubCommand::Update {
             packages,

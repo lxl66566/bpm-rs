@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use log::info;
 use trauma::{
     download::Download,
-    downloader::{DownloaderBuilder, ProgressBarOpts, StyleOptions},
+    downloader::{Downloader, ProgressBarOpts, StyleOptions},
 };
 use url::Url;
 
@@ -32,36 +32,44 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
 
             ret.push((repo.name.clone(), to.join(filename.clone())));
 
-            Some(Download::new(&url, &filename))
+            Some(
+                Download::builder()
+                    .url(url.as_str())
+                    .ok()?
+                    .filename_override(filename)
+                    .build(),
+            )
         })
         .collect::<Vec<_>>();
 
-    // 2. 定义进度条样式，{msg} 代表 trauma 传递的文件名
-    // 你可以根据喜好调整外观，例如加入颜色 (.cyan 等)
-    let style = StyleOptions::new(
-        ProgressBarOpts::new(
-            Some(ProgressBarOpts::TEMPLATE_BAR_WITH_POSITION.into()),
-            Some(ProgressBarOpts::CHARS_LINE.into()),
-             true,
-            false,
-        ),
-        ProgressBarOpts::new(
-            Some(
-                "{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})".into(),
-            ),
-            Some(ProgressBarOpts::CHARS_LINE.into()),
-            true,
-            false,
-        ),
-    );
+    // 2. 定义进度条样式
+    let style = StyleOptions::builder()
+        .main(
+            ProgressBarOpts::builder()
+                .template(ProgressBarOpts::TEMPLATE_BAR_WITH_POSITION)
+                .progress_chars(ProgressBarOpts::CHARS_LINE)
+                .build(),
+        )
+        .child(
+            ProgressBarOpts::builder()
+                .template("{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+                .progress_chars(ProgressBarOpts::CHARS_LINE)
+                .build(),
+        )
+        .build();
 
-    // 3. 将 style_options 应用到 Builder 中
-    let downloader = DownloaderBuilder::new()
-        .directory(to)
+    let downloader = Downloader::builder()
+        .directory(&to)
         .style_options(style)
         .build();
 
-    downloader.download(&assets).await;
+    let summaries = downloader.download(&assets).await;
+
+    for summary in &summaries {
+        if let trauma::download::Status::Fail(msg) = summary.status() {
+            log::warn!("下载失败: {msg}");
+        }
+    }
 
     Ok(ret)
 }

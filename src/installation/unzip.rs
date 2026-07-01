@@ -64,11 +64,8 @@ impl ArchiveFormat {
             f if f.ends_with(".tar.lzma") || f.ends_with(".tlzma") => return Some(Self::TarLzma),
             f if f.ends_with(".tar.lz") || f.ends_with(".tlz") => return Some(Self::TarLzip),
             f if f.ends_with(".tar.sz") || f.ends_with(".tsz") => return Some(Self::TarSnappy),
-            f if f.ends_with(".tar.zst")
-                || f.ends_with(".tzst")
-                || f.ends_with(".tar.zstd") =>
-            {
-                return Some(Self::TarZstd)
+            f if f.ends_with(".tar.zst") || f.ends_with(".tzst") || f.ends_with(".tar.zstd") => {
+                return Some(Self::TarZstd);
             }
             _ => {}
         }
@@ -82,7 +79,7 @@ impl ArchiveFormat {
                 || f.ends_with(".whl")
                 || f.ends_with(".apk") =>
             {
-                return Some(Self::Zip)
+                return Some(Self::Zip);
             }
             f if f.ends_with(".tar") || f.ends_with(".cbt") => return Some(Self::Tar),
             f if f.ends_with(".7z") || f.ends_with(".cb7") => return Some(Self::SevenZip),

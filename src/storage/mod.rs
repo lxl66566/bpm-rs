@@ -4,6 +4,7 @@ pub mod db;
 
 use std::{
     cmp::Ordering,
+    collections::BTreeSet,
     fmt,
     path::{Path, PathBuf},
 };
@@ -105,6 +106,13 @@ fn is_false(b: &bool) -> bool {
     !(*b)
 }
 
+/// The tracked set of paths installed by a repo.
+///
+/// A `BTreeSet` (rather than a `Vec`) so duplicates are impossible without a
+/// manual dedup step, and iteration is deterministically sorted — reverse
+/// iteration therefore removes children before their parent directories.
+pub type InstalledFiles = BTreeSet<PathBuf>;
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Repo {
@@ -115,7 +123,14 @@ pub struct Repo {
     pub repo_owner: Option<String>,
     pub asset: Option<String>,
     pub version: Option<String>,
-    pub installed_files: Vec<PathBuf>,
+    /// Files tracked as installed by this repo.
+    ///
+    /// Stored as a `BTreeSet` so paths are naturally de-duplicated (an update
+    /// re-runs `install` on a repo that already carries the same paths) and
+    /// iterated in a deterministic, sorted order — which also means a reverse
+    /// iteration removes children before their parent directories.
+    #[serde(default = "InstalledFiles::new")]
+    pub installed_files: InstalledFiles,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_time: Option<std::time::SystemTime>,
@@ -213,16 +228,10 @@ impl Repo {
         self.site.base().join_all_str([owner, repo_name]).ok()
     }
 
-    pub fn dedup_file_list(&mut self) {
-        self.installed_files.sort();
-        self.installed_files.dedup();
-        debug!("dedup file list success: {:#?}", self.installed_files);
-    }
-
     pub fn add_file_list(&mut self, file: impl AsRef<Path>) {
         let file = file.as_ref().to_path_buf();
         debug!("add file `{}` to file_list", file.display());
-        self.installed_files.push(file);
+        self.installed_files.insert(file);
     }
 
     pub fn set_by_fullname(&mut self, full_name: &str) -> Result<()> {
@@ -403,6 +412,24 @@ mod tests {
 
         let repo = Repo::new("test").with_bin_name("mybin.exe".to_string());
         assert_eq!(repo.bin_name, "mybin.exe");
+    }
+
+    #[test]
+    fn test_installed_files_natural_dedup() {
+        // installed_files is a BTreeSet: inserting the same path twice (which
+        // happens when an update re-runs install) must not create duplicates.
+        let mut repo = Repo::new("foo");
+        let p1: PathBuf = "/usr/bin/foo".into();
+        let p2: PathBuf = "/usr/share/foo".into();
+
+        for _ in 0..2 {
+            repo.add_file_list(&p1);
+            repo.add_file_list(&p2);
+        }
+
+        assert_eq!(repo.installed_files.len(), 2);
+        assert!(repo.installed_files.contains(&p1));
+        assert!(repo.installed_files.contains(&p2));
     }
 
     #[test]

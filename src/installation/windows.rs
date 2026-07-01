@@ -61,6 +61,49 @@ fn check_and_install_msi(src: impl AsRef<Path>, dry_run: bool) -> Result<bool> {
     Ok(false)
 }
 
+/// Coupled filesystem + tracking helpers for an installed repo.
+///
+/// Each method touches **both** the filesystem and `installed_files` in one
+/// call, so the two can never drift apart (which is how stale or missing
+/// entries used to sneak in).
+impl Repo {
+    /// Remove pre-existing shim/link artifacts for the given base path.
+    ///
+    /// Besides the current shim files (`<base>.exe`, `<base>.shim` and the
+    /// bare `<base>` sh script), this also cleans up legacy `<base>.lnk` /
+    /// `<base>.cmd` files left behind by the old (python) bpm, so that an
+    /// update fully replaces them with the new shim-based scripts.
+    ///
+    /// Removed paths are deleted from disk **and** untracked from
+    /// `installed_files` together — missing files / untracked entries are
+    /// silently ignored.
+    fn remove_shim_artifacts(&mut self, base: &Path) {
+        let paths: Vec<PathBuf> = std::iter::once(base.to_path_buf())
+            .chain(
+                ["exe", "shim", "lnk", "cmd"]
+                    .into_iter()
+                    .map(|e| base.with_extension(e)),
+            )
+            .collect();
+        for p in &paths {
+            let _ = fs::remove_file(p);
+            self.installed_files.remove(p);
+        }
+    }
+
+    /// Perform a filesystem operation and track `dst` as installed in a single
+    /// step, so the on-disk state and `installed_files` can never drift apart.
+    ///
+    /// This is the add-side counterpart of [`Repo::remove_shim_artifacts`]: the
+    /// operation runs first and `dst` is tracked only on success, which means a
+    /// failed write never leaves a stale entry behind.
+    fn add_installed_file(&mut self, dst: &Path, op: impl FnOnce() -> Result<()>) -> Result<()> {
+        op()?;
+        self.installed_files.insert(dst.to_path_buf());
+        Ok(())
+    }
+}
+
 impl Installation for Repo {
     fn install(&mut self, src: impl AsRef<Path>, ctx: &Context) -> Result<()> {
         let src = src.as_ref();
@@ -82,8 +125,7 @@ impl Installation for Repo {
         let app_dir = ctx.app_path().join(&self.name);
 
         // 直接移动文件夹，不再记录每一个内部文件。
-        move_dir_content(src, &app_dir, ctx.dry_run)?;
-        self.installed_files.push(app_dir.clone());
+        self.add_installed_file(&app_dir, || move_dir_content(src, &app_dir, ctx.dry_run))?;
 
         self.create_binary_links(ctx)?;
         Ok(())
@@ -158,33 +200,41 @@ impl WindowsBinaryLinks for Repo {
                 let shim_cfg_path = base.with_extension("shim");
                 let sh_path = base.clone();
 
-                for p in [&exe_path, &shim_cfg_path, &sh_path] {
-                    let _ = fs::remove_file(p);
-                }
+                // Remove any pre-existing artifacts before recreating, including
+                // legacy `.lnk` / `.cmd` files left by the old (python) bpm so
+                // that an update fully switches over to the new shims. This
+                // also untracks them, keeping disk and installed_files in sync.
+                self.remove_shim_artifacts(&base);
 
-                fs::hard_link(&base_shim, &exe_path)?;
-                debug!("create exe shim: {:?}", exe_path.display());
-                self.installed_files.push(exe_path);
+                self.add_installed_file(&exe_path, || {
+                    fs::hard_link(&base_shim, &exe_path)?;
+                    debug!("create exe shim: {:?}", exe_path.display());
+                    Ok(())
+                })?;
 
                 let target = bin_file.absolutize()?;
-                fs::write(&shim_cfg_path, format!("path = {}\n", target.display()))?;
-                debug!("create shim config: {:?}", shim_cfg_path.display());
-                self.installed_files.push(shim_cfg_path);
+                self.add_installed_file(&shim_cfg_path, || {
+                    fs::write(&shim_cfg_path, format!("path = {}\n", target.display()))?;
+                    debug!("create shim config: {:?}", shim_cfg_path.display());
+                    Ok(())
+                })?;
 
-                fs::write(
-                    &sh_path,
-                    format!(
-                        "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
-                        windows_path_to_windows_bash(bin_file),
-                        windows_path_to_wsl(bin_file)
-                    ),
-                )?;
-                debug!(
-                    "create sh: `{:?}` -> `{:?}`",
-                    bin_file.display(),
-                    sh_path.display()
-                );
-                self.installed_files.push(sh_path);
+                self.add_installed_file(&sh_path, || {
+                    fs::write(
+                        &sh_path,
+                        format!(
+                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
+                            windows_path_to_windows_bash(bin_file),
+                            windows_path_to_wsl(bin_file)
+                        ),
+                    )?;
+                    debug!(
+                        "create sh: `{:?}` -> `{:?}`",
+                        bin_file.display(),
+                        sh_path.display()
+                    );
+                    Ok(())
+                })?;
             }
         }
 
@@ -282,5 +332,49 @@ mod tests {
 
         let res = check_and_install_msi(dir.path(), true).unwrap();
         assert!(res);
+    }
+
+    #[test]
+    fn test_remove_shim_artifacts_syncs_fs_and_tracking() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("foo");
+
+        // Pre-track the current shim-rs artifacts (as a previous install would).
+        let mut repo = Repo::new("foo");
+        for ext in ["exe", "shim"] {
+            let p = base.with_extension(ext);
+            fs::write(&p, "x").unwrap();
+            repo.installed_files.insert(p);
+        }
+        repo.installed_files.insert(base.clone());
+        fs::write(&base, "#!/bin/sh").unwrap();
+
+        // Legacy artifacts from the old (python) bpm (not tracked).
+        fs::write(base.with_extension("lnk"), "lnk").unwrap();
+        fs::write(base.with_extension("cmd"), "cmd").unwrap();
+
+        repo.remove_shim_artifacts(&base);
+
+        // FS: everything removed (current + legacy).
+        for ext in ["exe", "shim", "lnk", "cmd"] {
+            assert!(
+                !base.with_extension(ext).exists(),
+                "{ext} artifact should be removed"
+            );
+        }
+        assert!(!base.exists(), "bare sh script should be removed");
+
+        // Tracking: previously tracked paths are untracked in the same call.
+        assert!(repo.installed_files.is_empty());
+    }
+
+    #[test]
+    fn test_remove_shim_artifacts_ignores_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("nothing-here");
+        // No files exist and nothing is tracked — must not error or change state.
+        let mut repo = Repo::new("foo");
+        repo.remove_shim_artifacts(&base);
+        assert!(repo.installed_files.is_empty());
     }
 }

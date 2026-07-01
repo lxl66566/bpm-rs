@@ -75,7 +75,7 @@ fn dry_run_uninstall_is_noop() {
 
     let mut repo = Repo::new("noop-test");
     repo.installed_files
-        .push(PathBuf::from("/tmp/noop/fake.txt"));
+        .insert(PathBuf::from("/tmp/noop/fake.txt"));
 
     let result = repo.uninstall(&ctx);
     assert!(result.is_ok());

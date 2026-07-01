@@ -108,93 +108,98 @@ impl Default for UnixPaths {
     }
 }
 
-fn install_file(
-    src: &Path,
-    dst: &Path,
-    dry_run: bool,
-    mode: Option<u32>,
-    recorder: &mut Vec<PathBuf>,
-) -> Result<()> {
-    recorder.push(dst.to_path_buf());
-    if dry_run {
-        info!("dry run: {dst:?}");
-        return Ok(());
-    }
-
-    if src.is_dir() {
-        fs::create_dir_all(dst)?;
-        info!("mkdir {src:?} -> {dst:?}");
-        return Ok(());
-    }
-
-    if dst.exists() {
-        rename_old(dst)?;
-    }
-    fs::copy(src, dst)?;
-    info!("{src:?} -> {dst:?}");
-
-    if let Some(m) = mode {
-        fs::set_permissions(dst, fs::Permissions::from_mode(m))?;
-    }
-    Ok(())
-}
-
-fn merge_dir(from: &Path, to: &Path, dry_run: bool, recorder: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in WalkDir::new(from).min_depth(1) {
-        let entry = entry?;
-        let src = entry.path();
-        let rel_path = src.strip_prefix(from)?;
-        let dst = to.join(rel_path);
+/// Coupled filesystem + tracking helpers for an installed repo.
+///
+/// Each method touches **both** the filesystem and `installed_files` in one
+/// call (the add-side counterpart of [`Repo::remove_shim_artifacts`]), so the
+/// two can never drift apart.
+impl Repo {
+    /// Copy a single file/dir to `dst` and track it together.
+    fn install_file(
+        &mut self,
+        src: &Path,
+        dst: &Path,
+        dry_run: bool,
+        mode: Option<u32>,
+    ) -> Result<()> {
+        self.installed_files.insert(dst.to_path_buf());
+        if dry_run {
+            info!("dry run: {dst:?}");
+            return Ok(());
+        }
 
         if src.is_dir() {
-            if !dry_run {
-                fs::create_dir_all(&dst)?;
+            fs::create_dir_all(dst)?;
+            info!("mkdir {src:?} -> {dst:?}");
+            return Ok(());
+        }
+
+        if dst.exists() {
+            rename_old(dst)?;
+        }
+        fs::copy(src, dst)?;
+        info!("{src:?} -> {dst:?}");
+
+        if let Some(m) = mode {
+            fs::set_permissions(dst, fs::Permissions::from_mode(m))?;
+        }
+        Ok(())
+    }
+
+    /// Recursively merge `from` into `to`, tracking every path written.
+    fn merge_dir(&mut self, from: &Path, to: &Path, dry_run: bool) -> Result<()> {
+        for entry in WalkDir::new(from).min_depth(1) {
+            let entry = entry?;
+            let src = entry.path();
+            let rel_path = src.strip_prefix(from)?;
+            let dst = to.join(rel_path);
+
+            if src.is_dir() {
+                if !dry_run {
+                    fs::create_dir_all(&dst)?;
+                }
+                self.installed_files.insert(dst);
+            } else {
+                self.install_file(src, &dst, dry_run, None)?;
             }
-            recorder.push(dst);
-        } else {
-            install_file(src, &dst, dry_run, None, recorder)?;
         }
+        Ok(())
     }
-    Ok(())
-}
 
-fn install_completions(
-    path: &Path,
-    paths: &UnixPaths,
-    dry_run: bool,
-    recorder: &mut Vec<PathBuf>,
-) -> Result<()> {
-    if !path.is_dir() {
-        return Ok(());
-    }
-    debug!("installing completions from {path:?}");
-
-    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        let src = entry.path();
-        if !src.is_file() {
-            continue;
+    /// Install shell completion files from `path`, tracking each one.
+    fn install_completions(&mut self, path: &Path, paths: &UnixPaths, dry_run: bool) -> Result<()> {
+        if !path.is_dir() {
+            return Ok(());
         }
+        debug!("installing completions from {path:?}");
 
-        let Some(shell) = detect_completion_shell(src) else {
-            continue;
-        };
+        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+            let src = entry.path();
+            if !src.is_file() {
+                continue;
+            }
 
-        let file_name = src.file_name().unwrap();
-        let dst = match shell {
-            Shell::Fish => paths
-                .share()
-                .join("fish/vendor_completions.d")
-                .join(file_name),
-            Shell::Bash => paths
-                .share()
-                .join("bash-completion/completions")
-                .join(file_name),
-            Shell::Zsh => paths.share().join("zsh/site-functions").join(file_name),
-        };
+            let Some(shell) = detect_completion_shell(src) else {
+                continue;
+            };
 
-        install_file(src, &dst, dry_run, Some(0o644), recorder)?;
+            let file_name = src.file_name().unwrap();
+            let dst = match shell {
+                Shell::Fish => paths
+                    .share()
+                    .join("fish/vendor_completions.d")
+                    .join(file_name),
+                Shell::Bash => paths
+                    .share()
+                    .join("bash-completion/completions")
+                    .join(file_name),
+                Shell::Zsh => paths.share().join("zsh/site-functions").join(file_name),
+            };
+
+            self.install_file(src, &dst, dry_run, Some(0o644))?;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// The supported shell completion kinds, each mapped to a dedicated install
@@ -307,13 +312,7 @@ impl Installation for Repo {
             if bin_file.is_file() {
                 debug!("selected binary: {bin_file:?}");
                 let dst = unix_paths.bin().join(bin_file.file_name().unwrap());
-                install_file(
-                    &bin_file,
-                    &dst,
-                    dry_run,
-                    Some(0o755),
-                    &mut self.installed_files,
-                )?;
+                self.install_file(&bin_file, &dst, dry_run, Some(0o755))?;
                 if self.one_bin {
                     return Ok(());
                 }
@@ -323,41 +322,21 @@ impl Installation for Repo {
         for file in &first_layer {
             let name = file.file_name().unwrap_or_default().to_string_lossy();
             match name.as_ref() {
-                "usr" => merge_dir(file, unix_paths.root(), dry_run, &mut self.installed_files)?,
-                "lib" => merge_dir(file, &unix_paths.lib(), dry_run, &mut self.installed_files)?,
-                "include" => merge_dir(
-                    file,
-                    &unix_paths.include(),
-                    dry_run,
-                    &mut self.installed_files,
-                )?,
-                "share" => merge_dir(
-                    file,
-                    &unix_paths.share(),
-                    dry_run,
-                    &mut self.installed_files,
-                )?,
-                "bin" => merge_dir(file, &unix_paths.bin(), dry_run, &mut self.installed_files)?,
-                "man" => merge_dir(
-                    file,
-                    &unix_paths.share().join("man"),
-                    dry_run,
-                    &mut self.installed_files,
-                )?,
+                "usr" => self.merge_dir(file, unix_paths.root(), dry_run)?,
+                "lib" => self.merge_dir(file, &unix_paths.lib(), dry_run)?,
+                "include" => self.merge_dir(file, &unix_paths.include(), dry_run)?,
+                "share" => self.merge_dir(file, &unix_paths.share(), dry_run)?,
+                "bin" => self.merge_dir(file, &unix_paths.bin(), dry_run)?,
+                "man" => self.merge_dir(file, &unix_paths.share().join("man"), dry_run)?,
                 // Locale data (e.g. <lang>/LC_MESSAGES/<pkg>.mo) lives under
                 // share/locale on Linux.
-                "locale" => merge_dir(
-                    file,
-                    &unix_paths.share().join("locale"),
-                    dry_run,
-                    &mut self.installed_files,
-                )?,
+                "locale" => self.merge_dir(file, &unix_paths.share().join("locale"), dry_run)?,
                 n if n.starts_with("complet") => {
-                    install_completions(file, &unix_paths, dry_run, &mut self.installed_files)?;
+                    self.install_completions(file, &unix_paths, dry_run)?;
                 }
                 n if n == self.bin_name && file.is_file() => {
                     let dst = unix_paths.bin().join(file.file_name().unwrap());
-                    install_file(file, &dst, dry_run, Some(0o755), &mut self.installed_files)?;
+                    self.install_file(file, &dst, dry_run, Some(0o755))?;
                 }
                 _ => {
                     debug!("cannot match {name}.");
@@ -369,13 +348,7 @@ impl Installation for Repo {
             let dst = unix_paths
                 .services()
                 .join(service_file.file_name().unwrap());
-            install_file(
-                &service_file,
-                &dst,
-                dry_run,
-                Some(0o644),
-                &mut self.installed_files,
-            )?;
+            self.install_file(&service_file, &dst, dry_run, Some(0o644))?;
         }
 
         let has_bin = self
@@ -529,9 +502,9 @@ mod tests {
 
         let tmp_root = tempfile::tempdir().unwrap();
         let paths = UnixPaths::new(Some(tmp_root.path()));
-        let mut recorder = Vec::new();
+        let mut repo = Repo::new("foo");
 
-        install_completions(src, &paths, true, &mut recorder).unwrap();
+        repo.install_completions(src, &paths, true).unwrap();
 
         let share = tmp_root.path().join("share");
         let expected = [
@@ -541,13 +514,15 @@ mod tests {
         ];
         for path in &expected {
             assert!(
-                recorder.iter().any(|p| p == path),
-                "expected {path:?} in recorder: {recorder:?}"
+                repo.installed_files.contains(path),
+                "expected {path:?} tracked: {:#?}",
+                repo.installed_files
             );
         }
         // README must not leak into the recorded completions.
         assert!(
-            !recorder
+            !repo
+                .installed_files
                 .iter()
                 .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("README.md"))
         );
@@ -593,5 +568,80 @@ mod tests {
             "locale file should be merged into share/locale, got: {:#?}",
             repo.installed_files
         );
+    }
+
+    /// Helper: assert the installed_files set contains no duplicate paths.
+    /// (Guaranteed by construction now that it is a `BTreeSet`, but kept as a
+    /// cheap invariant check.)
+    fn assert_no_duplicates(repo: &Repo) {
+        assert!(
+            !repo.installed_files.is_empty(),
+            "expected installed_files to be non-empty: {:#?}",
+            repo.installed_files
+        );
+        // A BTreeSet can never hold duplicates by construction.
+    }
+
+    #[test]
+    fn test_install_single_binary_tracks_bin_once() {
+        // A single binary whose name matches bin_name is recorded by both the
+        // single-file branch and the bin_name match in the loop; installed_files
+        // is a BTreeSet so the duplicate path collapses to a single entry.
+        let pkg = tempfile::tempdir().unwrap();
+        let src = pkg.path();
+        fs::write(src.join("mybin"), "#!/bin/sh\n").unwrap();
+
+        let tmp_root = tempfile::tempdir().unwrap();
+        let ctx = Context::new()
+            .with_dry_run(true)
+            .with_prefix(Some(tmp_root.path().to_path_buf()));
+
+        let mut repo = Repo::new("mybin");
+        repo.bin_name = "mybin".into();
+
+        repo.install(src, &ctx).unwrap();
+
+        let expected_bin = tmp_root.path().join("bin").join("mybin");
+        assert!(
+            repo.installed_files.contains(&expected_bin),
+            "expected {expected_bin:?} tracked, got: {:#?}",
+            repo.installed_files
+        );
+        // The bin path must be recorded exactly once.
+        assert_eq!(
+            repo.installed_files
+                .iter()
+                .filter(|p| *p == &expected_bin)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_reinstall_yields_same_file_set() {
+        // Simulate an update: the repo already carries the previously
+        // installed paths (loaded from db), and install() records them again.
+        // The BTreeSet must collapse the duplicates, leaving the set unchanged.
+        let pkg = tempfile::tempdir().unwrap();
+        let src = pkg.path();
+        fs::write(src.join("mybin"), "#!/bin/sh\n").unwrap();
+
+        let tmp_root = tempfile::tempdir().unwrap();
+        let ctx = Context::new()
+            .with_dry_run(true)
+            .with_prefix(Some(tmp_root.path().to_path_buf()));
+
+        let mut repo = Repo::new("mybin");
+        repo.bin_name = "mybin".into();
+
+        // First install.
+        repo.install(src, &ctx).unwrap();
+        let first = repo.installed_files.clone();
+
+        // Second install (update) — installed_files from before are retained.
+        repo.install(src, &ctx).unwrap();
+        assert_no_duplicates(&repo);
+        // And the set of tracked files is unchanged.
+        assert_eq!(repo.installed_files, first);
     }
 }

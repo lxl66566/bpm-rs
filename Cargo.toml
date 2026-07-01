@@ -10,7 +10,7 @@ license     = "MIT"
 name        = "bin-package-manager"
 readme      = "README.md"
 repository  = "https://github.com/lxl66566/bpm-rs"
-version     = "0.1.1"
+version     = "0.2.0"
 
 [dependencies]
 anyhow              = "1.0"
@@ -21,7 +21,7 @@ bzip3               = { version = "0.12", features = ["bundled"] }
 clap                = { version = "4.5", features = ["derive"] }
 colored             = "3"
 comfy-table         = "7.1"
-config-file2        = { version = "0.5", features = ["all"] }
+config-file2        = { version = "0.6", features = ["all"] }
 dialoguer           = { version = "0.12", features = ["fuzzy-select"] }
 flate2              = "1"
 flexi_logger        = { version = "0.31", optional = true }

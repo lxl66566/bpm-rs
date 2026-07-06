@@ -259,6 +259,15 @@ fn ensure_base_shim(ctx: &Context) -> Result<PathBuf> {
 
 fn ensure_windows_path(bin_path: &Path) {
     let bin_str = bin_path.to_string_lossy();
+
+    // Skip persistent PATH modification for temp/test directories to avoid
+    // polluting the system PATH with temporary entries.
+    let temp_dir = std::env::temp_dir();
+    if bin_path.starts_with(&temp_dir) {
+        debug!("skip adding temp path '{bin_str}' to PATH");
+        return;
+    }
+
     if let Ok(path_str) = std::env::var("PATH")
         && path_str.to_lowercase().contains(&bin_str.to_lowercase())
     {

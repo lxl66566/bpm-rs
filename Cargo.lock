@@ -175,7 +175,7 @@ dependencies = [
  "libc",
  "log",
  "lz4_flex",
- "lzma-rust2 0.16.5",
+ "lzma-rust2 0.18.1",
  "path-absolutize",
  "reqwest",
  "serde",
@@ -1536,6 +1536,15 @@ name = "lzma-rust2"
 version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
+name = "lzma-rust2"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "243cb2271683c2855cad62142cbf38199db439b1b1e1ccdd5a011342894dd7cc"
 dependencies = [
  "sha2",
 ]

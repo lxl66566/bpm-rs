@@ -5,7 +5,7 @@ use crate::{
     cli::InstallOptions,
     context::Context,
     installation::{Installation, download, unzip},
-    search::Searchable,
+    search::{Searchable, UpdateCheck},
     storage::{LibcPref, Repo, RepoList, db::DbOperation},
 };
 
@@ -372,7 +372,7 @@ pub async fn cli_update(
             let repo_name = repo.name.clone();
 
             match update_result {
-                Some((old, new)) => {
+                UpdateCheck::Update { old, new } => {
                     info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
                     match install_single(ctx, &mut repo, None).await {
                         Ok(()) => {
@@ -386,8 +386,14 @@ pub async fn cli_update(
                         }
                     }
                 }
-                None => {
-                    info!("`{repo_name}` is already up to date.");
+                UpdateCheck::UpToDate { current, latest } => {
+                    info!(
+                        "`{repo_name}` is already up to date (current: {current}, latest: {latest})."
+                    );
+                }
+                UpdateCheck::Failed(e) => {
+                    failed.push(repo_name.clone());
+                    error!("Failed to check update for {repo_name}: {e}");
                 }
             }
         }

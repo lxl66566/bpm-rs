@@ -58,7 +58,18 @@ pub trait Searchable {
     async fn get_asset(&mut self, interactive: bool) -> Result<()>;
     /// Check for a newer version, try URL-replacement fast path, fall back to
     /// full asset selection.
-    async fn update_asset(&mut self, interactive: bool) -> Option<(String, String)>;
+    async fn update_asset(&mut self, interactive: bool) -> UpdateCheck;
+}
+
+/// Result of an update check.
+#[derive(Debug)]
+pub enum UpdateCheck {
+    /// No newer release found: the current version equals the latest.
+    UpToDate { current: String, latest: String },
+    /// A newer release is available and ready to install.
+    Update { old: String, new: String },
+    /// The update check failed; carries the underlying error.
+    Failed(anyhow::Error),
 }
 
 // -------- internal helpers (Repo) --------
@@ -290,14 +301,24 @@ impl Searchable for Repo {
         Ok(())
     }
 
-    async fn update_asset(&mut self, interactive: bool) -> Option<(String, String)> {
-        let old_version = self.version.clone()?;
-        let old_asset = self.asset.clone()?;
+    async fn update_asset(&mut self, interactive: bool) -> UpdateCheck {
+        let Some(old_version) = self.version.clone() else {
+            return UpdateCheck::Failed(anyhow!("no version recorded for this repo"));
+        };
+        let Some(old_asset) = self.asset.clone() else {
+            return UpdateCheck::Failed(anyhow!("no asset recorded for this repo"));
+        };
 
-        let release = self.fetch_latest_release().await.ok()?;
+        let release = match self.fetch_latest_release().await {
+            Ok(release) => release,
+            Err(e) => return UpdateCheck::Failed(e),
+        };
 
         if old_version == release.tag {
-            return None;
+            return UpdateCheck::UpToDate {
+                current: old_version,
+                latest: release.tag,
+            };
         }
 
         // Fast path: replace old version string with new one in the asset URL
@@ -305,14 +326,23 @@ impl Searchable for Repo {
         if candidate != old_asset && check_url_exists(&candidate).await {
             self.version = Some(release.tag.clone());
             self.asset = Some(candidate);
-            return Some((old_version, release.tag));
+            return UpdateCheck::Update {
+                old: old_version,
+                new: release.tag,
+            };
         }
 
         // Fallback: reuse the already-fetched release for full asset selection
-        let asset = self.select_asset(&release, interactive).ok()?;
+        let asset = match self.select_asset(&release, interactive) {
+            Ok(asset) => asset,
+            Err(e) => return UpdateCheck::Failed(e),
+        };
         self.version = Some(release.tag.clone());
         self.asset = Some(asset);
-        Some((old_version, release.tag))
+        UpdateCheck::Update {
+            old: old_version,
+            new: release.tag,
+        }
     }
 }
 

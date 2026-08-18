@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
-use log::info;
-use trauma::{
-    download::Download,
+use bpm_trauma::{
+    download::{Download, Status},
     downloader::{Downloader, ProgressBarOpts, StyleOptions},
 };
+use log::info;
 use url::Url;
 
 use crate::{storage::Repo, utils::FileNameExt};
@@ -42,14 +42,8 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
         })
         .collect::<Vec<_>>();
 
-    // 2. 定义进度条样式
+    // 2. 定义进度条样式（每个 asset 一个进度条，无总体进度条）
     let style = StyleOptions::builder()
-        .main(
-            ProgressBarOpts::builder()
-                .template(ProgressBarOpts::TEMPLATE_BAR_WITH_POSITION)
-                .progress_chars(ProgressBarOpts::CHARS_LINE)
-                .build(),
-        )
         .child(
             ProgressBarOpts::builder()
                 .template(
@@ -69,7 +63,7 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
     let summaries = downloader.download(&assets).await;
 
     for summary in &summaries {
-        if let trauma::download::Status::Fail(msg) = summary.status() {
+        if let Status::Fail(msg) = summary.status() {
             log::warn!("下载失败: {msg}");
         }
     }

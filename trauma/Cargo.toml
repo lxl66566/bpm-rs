@@ -1,0 +1,33 @@
+[package]
+name        = "bpm-trauma"
+version     = "3.0.0"
+edition     = "2024"
+description = "A fork of the trauma crate: simple asynchronous HTTP downloads with progress bars, tailored for bpm"
+repository  = "https://github.com/lxl66566/bpm-rs"
+license     = "MIT"
+keywords    = ["async", "download", "http", "indicatif", "tokio"]
+categories  = ["concurrency"]
+
+# Forked from https://github.com/rgreinho/trauma (v3.0.0); no longer follows upstream.
+# Removed: reqwest-middleware stack (reqwest-tracing, opentelemetry, reqwest-retry),
+# tracing, form_urlencoded. Retries are implemented in-house with exponential backoff.
+
+[dependencies]
+bon       = "3"
+futures   = "0.3"
+indicatif = "0.18"
+log       = "0.4"
+reqwest   = { version = "0.13", default-features = false, features = [
+  "charset",
+  "http2",
+  "socks",
+  "stream",
+  "system-proxy",
+] }
+thiserror = "2"
+tokio     = { version = "1", features = ["macros", "rt", "time"] }
+
+[features]
+default     = ["rustls"]
+default-tls = ["reqwest/default-tls"]
+rustls      = ["reqwest/rustls"]

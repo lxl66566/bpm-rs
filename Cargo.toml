@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow              = "1"
 architecture-select = { path = "architecture-select", version = "0.2.0" }
+bpm-trauma          = { path = "trauma", version = "3.0.0", features = ["rustls"] }
 brotli              = "8"
 bzip2               = "0.6"
 bzip3               = { version = "0.12", features = ["bundled"] }
@@ -43,7 +44,6 @@ strum_macros        = "0.28"
 tar                 = "0.4"
 tempfile            = "3"
 tokio               = { version = "1.52", features = ["macros", "rt", "rt-multi-thread"] }
-trauma              = { version = "3", features = ["rustls"] }
 url                 = { version = "2", features = ["serde"] }
 walkdir             = "2.5"
 zip                 = "8.6"

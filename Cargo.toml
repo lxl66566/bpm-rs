@@ -1,26 +1,29 @@
 [package]
-authors     = ["lxl66566 <lxl66566@gmail.com>"]
-categories  = ["command-line-utilities"]
-description = "A binary package manager based on GitHub Releases"
-edition     = "2024"
-exclude     = ["AGENTS.md", "architecture-select"]
-homepage    = "https://github.com/lxl66566/bpm-rs"
-keywords    = ["binary", "package-manager", "github-releases"]
-license     = "MIT"
 name        = "bin-package-manager"
-readme      = "README.md"
-repository  = "https://github.com/lxl66566/bpm-rs"
 version     = "0.2.0"
+edition     = "2024"
+description = "A binary package manager based on GitHub Releases"
+readme      = "README.md"
+homepage    = "https://github.com/lxl66566/bpm-rs"
+repository  = "https://github.com/lxl66566/bpm-rs"
+license     = "MIT"
+keywords    = ["binary", "github-releases", "package-manager"]
+categories  = ["command-line-utilities"]
+exclude     = ["AGENTS.md", "architecture-select"]
+
+[[bin]]
+name = "bpm"
+path = "src/main.rs"
 
 [dependencies]
-anyhow              = "1.0"
-architecture-select = { version = "0.2.0", path = "architecture-select" }
+anyhow              = "1"
+architecture-select = { path = "architecture-select", version = "0.2.0" }
 brotli              = "8"
 bzip2               = "0.6"
 bzip3               = { version = "0.12", features = ["bundled"] }
-clap                = { version = "4.5", features = ["derive"] }
+clap                = { version = "4.6", features = ["derive"] }
 colored             = "3"
-comfy-table         = "7.1"
+comfy-table         = "7.2"
 config-file2        = { version = "0.6", features = ["all"] }
 dialoguer           = { version = "0.12", features = ["fuzzy-select"] }
 flate2              = "1"
@@ -31,7 +34,7 @@ log                 = "0.4"
 lz4_flex            = "0.13"
 lzma-rust2          = "0.16"
 path-absolutize     = "3"
-reqwest             = { version = "0.13", features = ["rustls", "json"] }
+reqwest             = { version = "0.13", features = ["json"] }
 serde               = { version = "1", features = ["derive"] }
 serde_json          = "1"
 sevenz-rust2        = { version = "0.21" }
@@ -39,32 +42,42 @@ snap                = "1"
 strum_macros        = "0.28"
 tar                 = "0.4"
 tempfile            = "3"
-tokio               = { version = "1.52", features = ["rt", "rt-multi-thread", "macros"] }
+tokio               = { version = "1.52", features = ["macros", "rt", "rt-multi-thread"] }
 trauma              = { version = "3", features = ["rustls"] }
 url                 = { version = "2", features = ["serde"] }
-walkdir             = "2.4"
+walkdir             = "2.5"
 zip                 = "8.6"
 zstd                = "0.13"
 
 [build-dependencies]
 zstd = "0.13"
 
-[target.'cfg(windows)'.dependencies]
-windows-env = "0.2.0"
-
 [target."cfg(unix)".dependencies]
-libc = "0.2.186"
+libc = "0.2.189"
 
-[[bin]]
-name = "bpm"
-path = "src/main.rs"
+[target."cfg(windows)".dependencies]
+windows-env = "0.3.0"
 
 [features]
-bin     = ["flexi_logger"]
 default = ["bin"]
+bin     = ["flexi_logger"]
+
+[lints.clippy]
+all                     = { level = "warn", priority = -1 }
+cargo                   = { level = "warn", priority = -1 }
+doc_markdown            = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+multiple_crate_versions = "allow"
+pedantic                = { level = "warn", priority = -1 }
+wildcard_imports        = "allow"
+
+[lints.rust]
+unsafe_code           = "allow"
+unused_qualifications = "warn"
 
 [profile.release]
-lto       = true
 opt-level = "s"
-panic     = "abort"
 strip     = true
+lto       = true
+panic     = "abort"

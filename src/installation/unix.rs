@@ -52,7 +52,7 @@ impl UnixPaths {
                         .expect("Failed to get home directory")
                         .join(".local")
                 }
-            }
+            },
         };
         Self { root }
     }
@@ -228,14 +228,12 @@ impl Shell {
 /// Detect the shell a completion file belongs to.
 ///
 /// Detection order (most precise first):
-/// 1. The immediate parent directory name (`bash`, `fish`, `zsh`, ...) — this
-///    recognizes the common `completions/<shell>/<binary>` layout where files
-///    have no distinguishing extension.
+/// 1. The immediate parent directory name (`bash`, `fish`, `zsh`, ...) — this recognizes the common
+///    `completions/<shell>/<binary>` layout where files have no distinguishing extension.
 /// 2. The file extension (`.fish`, `.bash`).
-/// 3. For files prefixed with `_`, a real zsh completion is confirmed by the
-///    canonical `#compdef` marker. Only the first bytes are read so large or
-///    binary files are not slurped into memory, and the check itself is far
-///    more precise than the previous loose "contains zsh" heuristic.
+/// 3. For files prefixed with `_`, a real zsh completion is confirmed by the canonical `#compdef`
+///    marker. Only the first bytes are read so large or binary files are not slurped into memory,
+///    and the check itself is far more precise than the previous loose "contains zsh" heuristic.
 #[must_use]
 fn detect_completion_shell(src: &Path) -> Option<Shell> {
     // 1. Parent directory name.
@@ -305,7 +303,7 @@ impl Installation for Repo {
                     None => {
                         warn!("No binary file found for {}", self.bin_name);
                         return Ok(());
-                    }
+                    },
                 }
             };
 
@@ -333,14 +331,14 @@ impl Installation for Repo {
                 "locale" => self.merge_dir(file, &unix_paths.share().join("locale"), dry_run)?,
                 n if n.starts_with("complet") => {
                     self.install_completions(file, &unix_paths, dry_run)?;
-                }
+                },
                 n if n == self.bin_name && file.is_file() => {
                     let dst = unix_paths.bin().join(file.file_name().unwrap());
                     self.install_file(file, &dst, dry_run, Some(0o755))?;
-                }
+                },
                 _ => {
                     debug!("cannot match {name}.");
-                }
+                },
             }
         }
 

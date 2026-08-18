@@ -348,8 +348,9 @@ impl RepoList {
 }
 
 impl<'a> IntoIterator for &'a RepoList {
-    type Item = &'a Repo;
     type IntoIter = std::slice::Iter<'a, Repo>;
+    type Item = &'a Repo;
+
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }

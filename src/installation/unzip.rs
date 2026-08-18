@@ -57,7 +57,7 @@ impl ArchiveFormat {
                 || f.ends_with(".tbz") =>
             {
                 return Some(Self::TarBzip2);
-            }
+            },
             f if f.ends_with(".tar.bz3") || f.ends_with(".tbz3") => return Some(Self::TarBzip3),
             f if f.ends_with(".tar.lz4") || f.ends_with(".tlz4") => return Some(Self::TarLz4),
             f if f.ends_with(".tar.xz") || f.ends_with(".txz") => return Some(Self::TarXz),
@@ -66,8 +66,8 @@ impl ArchiveFormat {
             f if f.ends_with(".tar.sz") || f.ends_with(".tsz") => return Some(Self::TarSnappy),
             f if f.ends_with(".tar.zst") || f.ends_with(".tzst") || f.ends_with(".tar.zstd") => {
                 return Some(Self::TarZstd);
-            }
-            _ => {}
+            },
+            _ => {},
         }
         // Archive formats
         match filename {
@@ -80,10 +80,10 @@ impl ArchiveFormat {
                 || f.ends_with(".apk") =>
             {
                 return Some(Self::Zip);
-            }
+            },
             f if f.ends_with(".tar") || f.ends_with(".cbt") => return Some(Self::Tar),
             f if f.ends_with(".7z") || f.ends_with(".cb7") => return Some(Self::SevenZip),
-            _ => {}
+            _ => {},
         }
         // Standalone compression formats
         match filename {
@@ -97,7 +97,7 @@ impl ArchiveFormat {
             f if f.ends_with(".sz") => return Some(Self::Snappy),
             f if f.ends_with(".zst") || f.ends_with(".zstd") => return Some(Self::Zstd),
             f if f.ends_with(".br") => return Some(Self::Brotli),
-            _ => {}
+            _ => {},
         }
         None
     }

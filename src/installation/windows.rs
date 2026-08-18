@@ -110,9 +110,8 @@ impl Installation for Repo {
 
         if check_and_install_msi(src, ctx.dry_run)? {
             warn!(
-                "MSI package '{}' was installed silently via msiexec. \
-                 bpm cannot track or uninstall MSI-installed files — \
-                 use Windows Settings > Apps to uninstall.",
+                "MSI package '{}' was installed silently via msiexec. bpm cannot track or \
+                 uninstall MSI-installed files — use Windows Settings > Apps to uninstall.",
                 self.name
             );
             self.is_msi = true;
@@ -223,7 +222,8 @@ impl WindowsBinaryLinks for Repo {
                     fs::write(
                         &sh_path,
                         format!(
-                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
+                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \
+                             \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
                             windows_path_to_windows_bash(bin_file),
                             windows_path_to_wsl(bin_file)
                         ),
@@ -276,7 +276,7 @@ fn ensure_windows_path(bin_path: &Path) {
     match windows_env::append("PATH", &bin_str) {
         Ok(()) => {
             info!("{bin_str} added to PATH. You may need to restart the terminal to apply.");
-        }
+        },
         Err(e) => warn!("Failed to add {bin_str} to PATH: {e}"),
     }
 }

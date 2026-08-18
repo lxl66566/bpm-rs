@@ -52,7 +52,10 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
         )
         .child(
             ProgressBarOpts::builder()
-                .template("{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+                .template(
+                    "{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] \
+                     {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                )
                 .progress_chars(ProgressBarOpts::CHARS_LINE)
                 .build(),
         )

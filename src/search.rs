@@ -84,7 +84,11 @@ impl Repo {
             bail!("repo_name not set");
         };
 
-        let per_page = if self.allow_pre { "1" } else { "100" };
+        let per_page = if self.allow_pre {
+            "1"
+        } else {
+            "100"
+        };
         let api = Url::parse_with_params(
             self.site
                 .api_base()

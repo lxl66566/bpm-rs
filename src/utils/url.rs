@@ -35,6 +35,7 @@ impl<'a> UrlJoinAll<'a> for Url {
             .pop_if_empty();
         Ok(url)
     }
+
     /// Join all &str to a [`Url`] object. The result [`Url`] must not
     /// have trailing slash.
     fn join_all_str<I: IntoIterator<Item = &'a str>>(

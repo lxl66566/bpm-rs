@@ -85,23 +85,17 @@ async fn install_from_zip_with_wrapping_directory() {
     let env = TestEnv::new();
     let zip_path = env.tmp().join("wrapped.zip");
     #[cfg(windows)]
-    create_test_zip(
-        &zip_path,
-        &[
-            ("test-app-1.0/test-app.exe", b"binary"),
-            ("test-app-1.0/README.md", b"readme"),
-            ("test-app-1.0/config.toml", b"config"),
-        ],
-    );
+    create_test_zip(&zip_path, &[
+        ("test-app-1.0/test-app.exe", b"binary"),
+        ("test-app-1.0/README.md", b"readme"),
+        ("test-app-1.0/config.toml", b"config"),
+    ]);
     #[cfg(not(windows))]
-    create_test_zip(
-        &zip_path,
-        &[
-            ("test-app-1.0/test-app", b"binary"),
-            ("test-app-1.0/README.md", b"readme"),
-            ("test-app-1.0/config.toml", b"config"),
-        ],
-    );
+    create_test_zip(&zip_path, &[
+        ("test-app-1.0/test-app", b"binary"),
+        ("test-app-1.0/README.md", b"readme"),
+        ("test-app-1.0/config.toml", b"config"),
+    ]);
 
     dispatch(install_cli("test-app", &zip_path, false), env.ctx())
         .await

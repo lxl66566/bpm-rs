@@ -86,7 +86,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                     repo.interactive = interactive;
                     db.insert_repo(repo)?;
                 }
-            }
+            },
             Err(e) => {
                 error!("Failed to install `{}`: {e}", repo.name);
                 if !ctx.dry_run {
@@ -95,7 +95,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                     let _ = repo_for_cleanup.uninstall(ctx);
                 }
                 return Err(e);
-            }
+            },
         }
         return Ok(());
     }
@@ -178,7 +178,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                 info!("`{}` installed successfully.", repo.name);
                 repo.interactive = interactive;
                 installed.push(repo);
-            }
+            },
             Err(e) => {
                 error!("Failed to install `{}`: {e}", repo.name);
                 if !ctx.dry_run {
@@ -193,7 +193,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                     let _ = repo_for_cleanup.uninstall(ctx);
                 }
                 return Err(e);
-            }
+            },
         }
     }
 
@@ -276,7 +276,11 @@ pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Res
         if let Some(mut repo) = db.get_repo(name) {
             info!(
                 "Removing `{name}`{}...",
-                if soft { " in soft mode" } else { "" }
+                if soft {
+                    " in soft mode"
+                } else {
+                    ""
+                }
             );
             if !soft {
                 repo.uninstall(ctx)?;
@@ -341,15 +345,16 @@ pub async fn cli_update(
                 Ok(()) => {
                     db.insert_repo(repo)?;
                     info!("`{repo_name}` updated successfully.");
-                }
+                },
                 Err(e) => {
                     failed.push(repo_name.clone());
                     error!("Failed to update {repo_name}: {e}");
-                }
+                },
             }
         } else {
             error!(
-                "`{repo_name}` was installed from a local path. Use --local to specify the path for update."
+                "`{repo_name}` was installed from a local path. Use --local to specify the path \
+                 for update."
             );
             failed.push(repo_name);
         }
@@ -379,22 +384,23 @@ pub async fn cli_update(
                             repo.version = Some(new);
                             db.insert_repo(repo)?;
                             info!("`{repo_name}` updated successfully.");
-                        }
+                        },
                         Err(e) => {
                             failed.push(repo_name.clone());
                             error!("Failed to update {repo_name}: {e}");
-                        }
+                        },
                     }
-                }
+                },
                 UpdateCheck::UpToDate { current, latest } => {
                     info!(
-                        "`{repo_name}` is already up to date (current: {current}, latest: {latest})."
+                        "`{repo_name}` is already up to date (current: {current}, latest: \
+                         {latest})."
                     );
-                }
+                },
                 UpdateCheck::Failed(e) => {
                     failed.push(repo_name.clone());
                     error!("Failed to check update for {repo_name}: {e}");
-                }
+                },
             }
         }
     }
@@ -478,7 +484,7 @@ pub async fn cli_info(
                     Some(repo) => {
                         let json = serde_json::to_string_pretty(&repo)?;
                         println!("{json}");
-                    }
+                    },
                     None => error!("Package `{name}` not found."),
                 }
             }
@@ -543,10 +549,10 @@ async fn check_outdated(ctx: &Context, packages: Vec<String>) -> Result<()> {
                 } else {
                     info!("{}  {} -> {}", repo.name, current, latest_tag);
                 }
-            }
+            },
             Err(e) => {
                 error!("Failed to check {}: {e}", repo.name);
-            }
+            },
         }
     }
     Ok(())

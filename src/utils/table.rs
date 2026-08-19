@@ -2,11 +2,7 @@
 
 use std::fmt;
 
-use comfy_table::{
-    Attribute, Cell, Color,
-    TableComponent::{BottomLeftCorner, BottomRightCorner, TopLeftCorner, TopRightCorner},
-    presets::UTF8_FULL,
-};
+use comfy_table::{Attribute, Cell, Color, presets::UTF8_FULL};
 
 use crate::storage::Repo;
 
@@ -17,11 +13,7 @@ pub struct Table(pub comfy_table::Table);
 impl Default for Table {
     fn default() -> Self {
         let mut table = comfy_table::Table::new();
-        table.load_preset(UTF8_FULL);
-        table.set_style(TopLeftCorner, '╭');
-        table.set_style(TopRightCorner, '╮');
-        table.set_style(BottomLeftCorner, '╰');
-        table.set_style(BottomRightCorner, '╯');
+        table.load_style(UTF8_FULL.with_rounded_corners());
         table.set_header(DISPLAY_HEADER);
         Self(table)
     }

@@ -545,7 +545,7 @@ mod tests {
             let src = another_temp.path().join(p);
             // Because `unzip` will remove the archive file, so we need to copy before
             // testing.
-            std::fs::copy(true_src, &src)?;
+            fs::copy(true_src, &src)?;
             let to = tempdir.path().join(p);
             let main = unzip(src, &to)?;
             if p.starts_with("root") {

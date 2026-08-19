@@ -31,7 +31,7 @@ impl<P: AsRef<Path>> PathExt for P {
         // 使用 walkdir 库，避免手写递归导致栈溢出，且过滤更优雅
         WalkDir::new(self)
             .into_iter()
-            .filter_map(std::result::Result::ok)
+            .filter_map(Result::ok)
             .filter(|e| e.file_type().is_file()) // 只保留文件
             .filter(|e| e.file_name() == pattern) // 匹配文件名
             .map(|e| e.path().to_path_buf())

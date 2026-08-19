@@ -205,7 +205,7 @@ impl Repo {
     pub fn with_bin_name(mut self, bin_name: String) -> Self {
         #[cfg(windows)]
         {
-            self.bin_name = if std::path::Path::new(&bin_name)
+            self.bin_name = if Path::new(&bin_name)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
             {

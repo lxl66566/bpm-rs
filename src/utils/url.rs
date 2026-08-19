@@ -42,7 +42,7 @@ impl<'a> UrlJoinAll<'a> for Url {
         &self,
         paths: I,
     ) -> Result<Url, url::ParseError> {
-        self.join_all(paths.into_iter().map(std::string::ToString::to_string))
+        self.join_all(paths.into_iter().map(ToString::to_string))
     }
 }
 
@@ -68,7 +68,7 @@ mod tests {
         let base_url = Url::parse("https://codegeex.cn").unwrap();
         let paths = ["foo", "bar", "baz/asdf"];
         let url = base_url
-            .join_all(paths.iter().map(std::string::ToString::to_string))
+            .join_all(paths.iter().map(ToString::to_string))
             .unwrap();
         assert_eq!(url.as_str(), "https://codegeex.cn/foo/bar/baz/asdf");
     }

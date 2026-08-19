@@ -11,7 +11,7 @@ use bin_package_manager::{
 
 #[allow(dead_code)]
 pub struct TestEnv {
-    _guard: tempfile::TempDir,
+    guard: tempfile::TempDir,
     install_pos: PathBuf,
     db_path: PathBuf,
     app_path: PathBuf,
@@ -28,7 +28,7 @@ impl TestEnv {
             bin_path: install_pos.join("bin"),
             db_path: dir.path().join("db.ron"),
             install_pos,
-            _guard: dir,
+            guard: dir,
         }
     }
 
@@ -59,7 +59,7 @@ impl TestEnv {
     }
 
     pub fn tmp(&self) -> &Path {
-        self._guard.path()
+        self.guard.path()
     }
 
     pub fn db(&self) -> Db {

@@ -3,7 +3,7 @@ pub mod table;
 pub mod url;
 
 pub use path::FileNameExt;
-pub use url::*;
+pub use url::UrlJoinAll;
 
 #[cfg(unix)]
 pub fn is_root() -> bool {

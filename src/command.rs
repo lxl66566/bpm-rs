@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{Result, anyhow, bail, ensure};
 use log::{debug, error, info};
 
@@ -446,6 +448,8 @@ pub async fn cli_update(
 
 #[cfg(windows)]
 pub async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Result<()> {
+    use std::ffi::OsStr;
+
     ensure!(
         old_name != new_name,
         "Alias name cannot be the same as the original."
@@ -454,41 +458,40 @@ pub async fn cli_alias(ctx: &Context, old_name: String, new_name: String) -> Res
     let db = ctx.db()?;
     let bin_path = ctx.bin_path();
 
-    let files: Vec<_> = std::fs::read_dir(&bin_path)?
-        .filter_map(std::result::Result::ok)
-        .filter(|e| {
-            e.file_name()
-                .to_str()
-                .is_some_and(|n| n.starts_with(&old_name))
+    let mut repo = db
+        .get_repo(&old_name)
+        .ok_or_else(|| anyhow!("Package `{old_name}` is not installed."))?;
+
+    // Only rename shim files owned by this package (its tracked files under
+    // bin). The previous implementation scanned every package's files and
+    // could rename unrelated ones that happened to share the stem.
+    let owned: Vec<PathBuf> = repo
+        .installed_files
+        .iter()
+        .filter(|p| {
+            p.starts_with(&bin_path) && p.file_stem() == Some(OsStr::new(old_name.as_str()))
         })
+        .cloned()
         .collect();
+    ensure!(
+        !owned.is_empty(),
+        "No shim files for `{old_name}` found in {}.",
+        bin_path.display()
+    );
 
-    ensure!(!files.is_empty(), "Script `{old_name}` not found.");
-
-    let mut count = 0u32;
-    let all_repos = db.get_repo_list();
-    for repo in all_repos.as_slice() {
-        for file in &repo.installed_files {
-            let path = std::path::Path::new(file);
-            if !path.exists() || path.is_dir() {
-                continue;
-            }
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            if stem == old_name && (ext == "exe" || ext == "shim" || ext.is_empty()) {
-                let new_path = path.with_file_name(format!("{new_name}.{ext}"));
-                std::fs::rename(path, &new_path)?;
-                count += 1;
-                if count >= 3 {
-                    break;
-                }
-            }
-        }
-        if count >= 3 {
-            break;
-        }
+    for path in owned {
+        let ext = path
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+        let new_path = path.with_file_name(format!("{new_name}{ext}"));
+        std::fs::rename(&path, &new_path)?;
+        // Keep tracking in sync so doctor/remove stay correct.
+        repo.installed_files.remove(&path);
+        repo.installed_files.insert(new_path);
     }
 
+    db.insert_repo(repo)?;
     info!("Alias `{old_name}` to `{new_name}`.");
     Ok(())
 }

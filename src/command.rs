@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, ensure};
+use anyhow::{Result, anyhow, bail, ensure};
 use log::{debug, error, info};
 
 use crate::{
@@ -331,6 +331,7 @@ pub async fn cli_update(
 ) -> Result<()> {
     let db = ctx.db()?;
     let mut failed = Vec::new();
+    let mut not_found = Vec::new();
     let all_repos = db.get_repo_list();
 
     let to_update: Vec<Repo> = if packages.is_empty() {
@@ -341,7 +342,7 @@ pub async fn cli_update(
             .filter_map(|name| {
                 let repo = db.get_repo(name);
                 if repo.is_none() {
-                    failed.push(name.clone());
+                    not_found.push(name.clone());
                     error!("Package `{name}` not found.");
                 }
                 repo
@@ -424,12 +425,21 @@ pub async fn cli_update(
         }
     }
 
+    // `failed` only contains repos that were part of to_update, so
+    // total - failed.len() can never underflow (not_found is separate).
     info!(
         "Update complete. Total: {total}, Success: {}",
         total - failed.len()
     );
     if !failed.is_empty() {
-        info!("Failed: {failed:?}");
+        error!("Failed: {failed:?}");
+    }
+    // A partial failure must surface as a non-zero exit code, otherwise
+    // scripts cannot detect it (not-found packages included).
+    let mut failure = failed;
+    failure.extend(not_found);
+    if !failure.is_empty() {
+        bail!("Update failed for {} package(s).", failure.len());
     }
     Ok(())
 }

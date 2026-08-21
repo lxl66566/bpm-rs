@@ -81,4 +81,6 @@ unused_qualifications = "warn"
 opt-level = "s"
 strip     = true
 lto       = true
-panic     = "abort"
+# No panic=abort: unwinding lets a panic inside a spawned tokio task surface
+# as a JoinError (which cli_install/cli_update handle with rollback) instead
+# of aborting the whole process mid-install, leaving an inconsistent state.

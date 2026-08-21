@@ -29,7 +29,7 @@ use crate::{
 };
 
 pub async fn dispatch(cli: Cli, ctx: Context) -> Result<()> {
-    crate::utils::spawn_cancel_handler();
+    spawn_cancel_handler();
     match cli.command {
         SubCommand::Install {
             opts,

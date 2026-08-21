@@ -1,4 +1,4 @@
-use std::sync::LazyLock as Lazy;
+use std::{sync::LazyLock as Lazy, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use dialoguer::{FuzzySelect, Select};
@@ -27,6 +27,9 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
+        // Without timeouts a stalled network would hang bpm forever.
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(30))
         .default_headers(headers)
         .build()
         .expect("Failed to build HTTP client")

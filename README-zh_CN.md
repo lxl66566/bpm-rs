@@ -12,10 +12,10 @@ bpm (bin package manager) 是一个基于 Github Release 的包管理器，允�
 > [!TIP]
 > bpm 保证对偶性，即 `bpm install` 后立即接 `bpm uninstall` 不会对系统作出任何改变。
 
-### compare to
+### 对比
 
-- 与 scoop/pacman 的区别：scoop/pacman 等工具需要打包者手动维护打包脚本；bpm 属于全自动化工具，可以兼容 95% 的 Github Release 打包，不需要额外的打包维护。
-- 与 cargo-binstall 的区别：cargo-binstall 只能安装 rust 编写的应用，且如果 rust 包没有在 crates.io 发布，安装会比较麻烦。bpm 不限语言，集成仓库搜索、自动判断 assets 为一体，使用更加方便。由于 rust 打包发布流程比较标准，bpm 安装 rust 应用的成功率几乎为 100%。
+- 与 scoop/pacman 等需要打包者维护打包脚本的工具不同，bpm 全自动化，无需额外打包维护即可兼容 ~95% 的 Github Release。
+- 与 cargo-binstall（仅限 Rust/crates.io）不同，bpm 不限语言，内置仓库搜索与自动 asset 选择。安装 Rust 应用成功率接近 100%。
 
 ## 安装
 
@@ -48,15 +48,30 @@ cargo install bpm --git https://github.com/lxl66566/bpm-rs
 ## 使用
 
 ```sh
-bpm i <package>       # 安装
-bpm list              # 查看已安装的包
-bpm -h                # 查看更多帮助
+bpm i <package>         # 安装（支持 GitHub 搜索、user/repo、URL）
+bpm i <package> --local <压缩包|目录>   # 从本地文件安装
+bpm r <package>         # 卸载
+bpm u [package]         # 更新一个 / 全部
+bpm list                # 查看已安装的包（--json、--outdated）
+bpm doctor              # 校验已安装文件
+bpm -h                  # 查看更多帮助
+```
+
+## 配置
+
+可选配置文件位于 `~/.config/bpm/config.toml`（可用 `--config` 指定）：
+
+```toml
+# install_position = "D:/bpm"      # app/bin 根目录（db 随之移动）
+# db_path = "D:/bpm/db.json"       # 单独指定 db 位置
+# prefix = "/usr/local"            # unix 安装前缀（--prefix 优先）
+# github_token = "ghp_xxx"         # 提升 API 速率限制；GITHUB_TOKEN/GH_TOKEN 环境变量优先
 ```
 
 ## 原理解释
 
-- 选择 asset：bpm 有一套较为复杂的 assets 匹配机制，一般可以筛选出最佳的 asset 作为安装目标。如果无法筛选到合适 asset，您可以使用 `--interactive` 来强制选择 asset。
-- binary 匹配逻辑：解压后，bpm 按以下顺序查找目标 bin 文件：(1) 如果压缩包内只有一个文件，直接使用该文件；(2) 否则递归扫描所有文件，匹配 `bin_name`（默认为包名，可通过 `--bin-name` / `-b` 覆盖，在 Windows 上自动补 `.exe` 后缀）；(3) 在 Windows 上若未匹配到，则回退使用所有 `.exe` 文件。 (4) `--one-bin` 用于强制单文件模式（Linux only，只安装第一个匹配到的 binary）。
+- **选择 asset**：bpm 基于平台/架构/libc 关键词自动匹配最佳 asset；可用 `--interactive` 手动选择。
+- **binary 匹配逻辑**：解压后按顺序查找：(1) 压缩包内只有一个文件时直接使用；(2) 否则递归匹配 `bin_name`（默认为包名，`--bin-name` / `-b` 覆盖，Windows 自动补 `.exe` 后缀）；(3) Windows 上未匹配到时回退使用所有 `.exe` 文件。`--one-bin` 强制单文件安装（仅 Linux）。
 
 ### Linux
 
@@ -67,12 +82,10 @@ bpm 自动判断 asset 中的文件结构，并安装到系统中的相应位置
 3. 安装 completions
 4. 安装 services（基于 systemd 的系统）
 
-bpm 自动为已存在的文件添加 `.old` 后缀以避免覆盖，卸载时 `.old` 文件将被恢复。
+已存在的文件会被重命名为 `<name>.old` 而非覆盖，卸载时恢复。
 
 由于依赖 [FHS](https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard)，bpm 不适用于 NixOS 等不遵循 FHS 的发行版。
 
 ### Windows
 
-bpm 下载内容并全部解压到 `%userprofile%/bpm/app/<name>`，为其中的可执行文件创建启动 shims 到 `%userprofile%/bpm/bin`（该位置会被自动添加到 PATH）。assets 匹配时，也支持下载安装单个 `.exe` 文件或 `.msi` 文件。
-
-bpm 在 windows 上使用类似 scoop 的 shims 机制，使用 exe 代理启动安装的软件，可以避免 cmd/sh 等兼容性问题。（原版 python 不支持此功能）
+bpm 将内容解压到 `%userprofile%/bpm/app/<name>`，并在 `%userprofile%/bpm/bin`（自动加入 PATH）中创建类似 scoop 的 shims 来启动可执行文件，避免 cmd/sh 兼容性问题。也支持安装单个 `.exe` 或 `.msi`。

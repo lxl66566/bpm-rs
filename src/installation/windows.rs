@@ -290,10 +290,18 @@ fn ensure_windows_path(bin_path: &Path) {
         return;
     }
 
-    if let Ok(path_str) = std::env::var("PATH")
-        && path_str.to_lowercase().contains(&bin_str.to_lowercase())
-    {
-        return;
+    // Compare against each PATH entry exactly (ignoring case and a trailing
+    // separator): a substring check would also match sibling dirs like
+    // `...\bpm\bin2`.
+    if let Ok(path_str) = std::env::var("PATH") {
+        let already = path_str.split(';').any(|entry| {
+            let entry = entry.trim_end_matches('\\');
+            let bin = bin_str.trim_end_matches('\\');
+            entry.eq_ignore_ascii_case(bin)
+        });
+        if already {
+            return;
+        }
     }
     match windows_env::append("PATH", &bin_str) {
         Ok(()) => {

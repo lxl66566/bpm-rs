@@ -226,8 +226,11 @@ fn build_repo_list(
     name: Option<String>,
     pre_release: bool,
 ) -> RepoList {
+    // Dedupe (preserving order) so `bpm i foo foo` runs once.
+    let mut seen = std::collections::HashSet::new();
     packages
         .into_iter()
+        .filter(|p| seen.insert(p.clone()))
         .map(move |p| {
             let mut repo = Repo::from(p.as_str());
             if let Some(ref n) = name {

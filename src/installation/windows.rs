@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use log::{debug, info, warn};
 use walkdir::WalkDir;
 
@@ -53,9 +53,27 @@ fn check_and_install_msi(src: impl AsRef<Path>, dry_run: bool) -> Result<bool> {
             info!("Dry run, skip installation.");
             return Ok(true);
         }
-        std::process::Command::new("msiexec.exe")
-            .args(["/i", file.to_str().unwrap(), "/quiet", "/qr", "/norestart"])
-            .status()?;
+        // /quiet and /qr contradict each other (fully silent vs reduced UI);
+        // use /quiet only.
+        let output = std::process::Command::new("msiexec.exe")
+            .args([
+                "/i",
+                file.to_str().ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "msi path is not UTF-8")
+                })?,
+                "/quiet",
+                "/norestart",
+            ])
+            .status()
+            .map_err(|e| anyhow::anyhow!("failed to spawn msiexec.exe: {e}"))?;
+        // A non-zero msiexec exit code means the installation failed; the
+        // previous code treated a spawned-but-failed install as success.
+        ensure!(
+            output.success(),
+            "msiexec exited with {} for {}",
+            output.code().unwrap_or(-1),
+            file.display()
+        );
         return Ok(true);
     }
     Ok(false)

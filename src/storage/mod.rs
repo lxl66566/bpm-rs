@@ -113,8 +113,12 @@ fn is_false(b: &bool) -> bool {
 /// iteration therefore removes children before their parent directories.
 pub type InstalledFiles = BTreeSet<PathBuf>;
 
+/// A repo is identified by its name, so all comparison traits compare the
+/// name only. Derived full-field `PartialEq` previously disagreed with the
+/// manual name-only `Ord`, which is UB-ish territory for sorted collections
+/// (e.g. `sort` + `dedup` would drop repos that differ only in metadata).
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, Default)]
 pub struct Repo {
     pub name: String,
     pub bin_name: String,
@@ -164,6 +168,12 @@ pub struct Repo {
     /// Whether the package was installed from a local path
     #[serde(default, skip_serializing_if = "is_false")]
     pub local: bool,
+}
+
+impl PartialEq for Repo {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 impl Ord for Repo {
@@ -375,6 +385,23 @@ impl fmt::Display for RepoList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_eq_and_ord_agree_on_name() {
+        // Two records with the same name but different metadata must be
+        // "equal" for Eq, matching Ord; otherwise sorted collections and
+        // sort+dedup would silently drop updated records.
+        let mut a = Repo::new("foo");
+        let mut b = Repo::new("foo");
+        assert_eq!(a, b);
+        assert!(a.cmp(&b) == Ordering::Equal);
+
+        b.version = Some("v2".into());
+        assert_eq!(a, b, "equality is name-based, version is metadata");
+
+        let c = Repo::new("bar");
+        assert_ne!(a, c);
+    }
 
     #[test]
     fn test_set_by_url() {

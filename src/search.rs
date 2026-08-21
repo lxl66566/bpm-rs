@@ -18,12 +18,12 @@ static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
         reqwest::header::HeaderValue::from_static("2022-11-28"),
     );
 
-    // Read token from GITHUB_TOKEN or GH_TOKEN environment variable
-    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN"))
+    // Token from GITHUB_TOKEN / GH_TOKEN env, else from the config file
+    if let Some(token) = crate::config::Config::github_token()
         && let Ok(value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
     {
         headers.insert(reqwest::header::AUTHORIZATION, value);
-        debug!("Using GitHub token from environment for higher API rate limit");
+        debug!("Using GitHub token (env or config) for higher API rate limit");
     }
 
     reqwest::Client::builder()

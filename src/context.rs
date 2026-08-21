@@ -36,6 +36,23 @@ impl Context {
         Self::default()
     }
 
+    /// Build a context from a loaded [`Config`] plus an optional CLI
+    /// `--prefix` (the CLI flag wins over the config file).
+    #[must_use]
+    pub fn from_config(config: &crate::config::Config, cli_prefix: Option<PathBuf>) -> Self {
+        let mut this = Self::default();
+        if let Some(p) = &config.install_position {
+            this.install_position = p.clone();
+            // db follows install_position unless db_path is set explicitly.
+            this.db_path = p.join("db.json");
+        }
+        if let Some(p) = &config.db_path {
+            this.db_path = p.clone();
+        }
+        this.prefix = cli_prefix.or_else(|| config.prefix.clone());
+        this
+    }
+
     #[must_use]
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
@@ -117,6 +134,38 @@ impl Context {
 mod tests {
     use super::*;
     use crate::storage::Repo;
+
+    #[test]
+    fn from_config_applies_fields_with_cli_prefix_priority() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = crate::config::Config {
+            install_position: Some(tmp.path().join("pos")),
+            db_path: None,
+            prefix: Some(PathBuf::from("/cfg-prefix")),
+            github_token: None,
+        };
+
+        let ctx = Context::from_config(&config, None);
+        assert_eq!(ctx.install_position(), tmp.path().join("pos"));
+        // db follows install_position
+        assert_eq!(ctx.db_path(), tmp.path().join("pos").join("db.json"));
+        #[cfg(unix)]
+        assert_eq!(ctx.prefix(), Some(Path::new("/cfg-prefix")));
+
+        // CLI --prefix overrides the config file.
+        let ctx = Context::from_config(&config, Some(PathBuf::from("/cli-prefix")));
+        assert_eq!(ctx.install_position(), tmp.path().join("pos"));
+        #[cfg(unix)]
+        assert_eq!(ctx.prefix(), Some(Path::new("/cli-prefix")));
+
+        // Explicit db_path does not follow install_position.
+        let config = crate::config::Config {
+            db_path: Some(tmp.path().join("elsewhere.ron")),
+            ..config.clone()
+        };
+        let ctx = Context::from_config(&config, None);
+        assert_eq!(ctx.db_path(), tmp.path().join("elsewhere.ron"));
+    }
 
     #[test]
     fn context_db_with_custom_path() {

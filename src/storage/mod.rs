@@ -391,10 +391,10 @@ mod tests {
         // Two records with the same name but different metadata must be
         // "equal" for Eq, matching Ord; otherwise sorted collections and
         // sort+dedup would silently drop updated records.
-        let mut a = Repo::new("foo");
+        let a = Repo::new("foo");
         let mut b = Repo::new("foo");
         assert_eq!(a, b);
-        assert!(a.cmp(&b) == Ordering::Equal);
+        assert_eq!(a.cmp(&b), Ordering::Equal);
 
         b.version = Some("v2".into());
         assert_eq!(a, b, "equality is name-based, version is metadata");

@@ -254,10 +254,10 @@ mod tests {
     #[test]
     fn db_lock_is_reentrant_in_process() {
         let (_dir, path) = temp_db_path();
-        let _db1 = Db::create_or_open(&path).unwrap();
-        let _db2 = Db::create_or_open(&path).unwrap();
-        drop(_db1);
-        drop(_db2);
+        let db1 = Db::create_or_open(&path).unwrap();
+        let db2 = Db::create_or_open(&path).unwrap();
+        drop(db1);
+        drop(db2);
         assert!(Db::create_or_open(&path).is_ok());
     }
 

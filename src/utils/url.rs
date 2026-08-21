@@ -1,11 +1,4 @@
-use std::path::{Path, PathBuf};
-
 use url::Url;
-
-/// join given [`Path`]s as posix path.
-pub fn path_join(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> PathBuf {
-    paths.into_iter().fold(PathBuf::new(), |acc, p| acc.join(p))
-}
 
 /// Join all strings to a [`Url`] object.
 pub trait UrlJoinAll<'a> {
@@ -43,19 +36,6 @@ impl<'a> UrlJoinAll<'a> for Url {
         paths: I,
     ) -> Result<Url, url::ParseError> {
         self.join_all(paths.into_iter().map(ToString::to_string))
-    }
-}
-
-/// Other url operations
-pub trait UrlOps {
-    fn extension(&self) -> Option<&str>;
-}
-
-impl UrlOps for Url {
-    fn extension(&self) -> Option<&str> {
-        Path::new(self.path())
-            .extension()
-            .and_then(std::ffi::OsStr::to_str)
     }
 }
 

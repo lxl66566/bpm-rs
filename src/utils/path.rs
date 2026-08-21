@@ -179,7 +179,7 @@ mod tests {
         assert!(results.contains(&file2));
 
         // 测试找不到的情况
-        assert!(base.glob_name("non_existent.txt").is_empty());
+        assert_eq!(base.glob_name("non_existent.txt"), [] as [PathBuf; 0]);
     }
 
     #[test]

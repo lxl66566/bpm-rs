@@ -1,6 +1,7 @@
 use std::{sync::LazyLock as Lazy, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
+use backon::{ExponentialBuilder, Retryable};
 use dialoguer::{FuzzySelect, Select};
 use log::{debug, info};
 use serde::Deserialize;
@@ -103,8 +104,29 @@ pub enum UpdateCheck {
     /// The update check failed; carries the underlying error.
     Failed(anyhow::Error),
 }
+// -------- internal helpers (Repo) ----
 
-// -------- internal helpers (Repo) --------
+/// Whether a request error is transient and worth retrying: network-level
+/// failures and 5xx server errors. Rate-limit / auth errors are not — retrying
+/// them just burns the rate limit faster.
+fn is_transient(e: &reqwest::Error) -> bool {
+    e.is_connect()
+        || e.is_timeout()
+        || e.is_request()
+        || e.status().is_some_and(|s| s.is_server_error())
+}
+
+/// Send a request with exponential backoff (default: 1s/2s/4s + jitter, 3
+/// retries) on transient failures. Takes a request *factory* because a
+/// retried request must be rebuilt (`RequestBuilder::send` consumes self).
+async fn send_with_retry(build: impl Fn() -> reqwest::RequestBuilder) -> Result<reqwest::Response> {
+    (|| build().send())
+        .retry(ExponentialBuilder::default().with_jitter())
+        .when(is_transient)
+        .await
+        .map_err(Into::into)
+}
+
 impl Repo {
     /// Fetch the latest release from the platform API and parse into a typed
     /// [`Release`]. Platform-specific parsing is isolated here.
@@ -130,9 +152,7 @@ impl Repo {
         )?;
 
         debug!("Fetch releases from API: {api}");
-        let releases: Vec<GithubRelease> = REQUEST_CLIENT
-            .get(api)
-            .send()
+        let releases: Vec<GithubRelease> = send_with_retry(|| REQUEST_CLIENT.get(api.clone()))
             .await?
             .error_for_status()
             .with_context(|| format!("GitHub releases API for {owner}/{name}"))?
@@ -235,23 +255,18 @@ fn from_github_release(raw: GithubRelease) -> Result<Release> {
     })
 }
 
-async fn check_url_exists(url: &str) -> bool {
+async fn check_url_exists(url: &str) -> Result<bool> {
     // Try HEAD first (lightweight), fall back to ranged GET for CDNs/proxies
     // that don't support HEAD.
-    if REQUEST_CLIENT
-        .head(url)
-        .send()
-        .await
-        .is_ok_and(|r| r.status().is_success())
+    if send_with_retry(|| REQUEST_CLIENT.head(url))
+        .await?
+        .status()
+        .is_success()
     {
-        return true;
+        return Ok(true);
     }
-    REQUEST_CLIENT
-        .get(url)
-        .header("Range", "bytes=0-0")
-        .send()
-        .await
-        .is_ok_and(|r| r.status().is_success())
+    let resp = send_with_retry(|| REQUEST_CLIENT.get(url).header("Range", "bytes=0-0")).await?;
+    Ok(resp.status().is_success())
 }
 
 // -------- Searchable trait implementation --------
@@ -276,9 +291,7 @@ impl Searchable for Repo {
         )?;
 
         debug!("search url: {url}");
-        let response = REQUEST_CLIENT
-            .get(url)
-            .send()
+        let response = send_with_retry(|| REQUEST_CLIENT.get(url.clone()))
             .await?
             .error_for_status()
             .context("GitHub search API")?;
@@ -344,7 +357,9 @@ impl Searchable for Repo {
 
         // Fast path: replace old version string with new one in the asset URL
         let candidate = old_asset.replace(&old_version, &release.tag);
-        if candidate != old_asset && check_url_exists(&candidate).await {
+        // Fast path failure must fall through to full selection, not abort
+        // the update: a transient error on the probe should not kill it.
+        if candidate != old_asset && check_url_exists(&candidate).await.unwrap_or(false) {
             self.version = Some(release.tag.clone());
             self.asset = Some(candidate);
             return UpdateCheck::Update {

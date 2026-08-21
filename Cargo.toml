@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow              = "1"
 architecture-select = { path = "architecture-select", version = "0.2.0" }
+backon = "1.6.0"
 bpm-trauma          = { path = "trauma", version = "3.0.0", features = ["rustls"] }
 brotli              = "8"
 bzip2               = "0.6"

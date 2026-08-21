@@ -505,22 +505,23 @@ pub async fn cli_info(
     let db = ctx.db()?;
 
     if json {
-        // JSON output for scripting
-        if packages.is_empty() {
-            let all = db.get_repo_list();
-            let json = serde_json::to_string_pretty(all.as_slice())?;
-            println!("{json}");
+        // Always emit one valid JSON document (an array); concatenating
+        // per-package documents is not valid JSON.
+        let repos: Vec<Repo> = if packages.is_empty() {
+            db.get_repo_list().into_inner()
         } else {
-            for name in &packages {
-                match db.get_repo(name) {
-                    Some(repo) => {
-                        let json = serde_json::to_string_pretty(&repo)?;
-                        println!("{json}");
+            packages
+                .iter()
+                .filter_map(|name| match db.get_repo(name) {
+                    Some(repo) => Some(repo),
+                    None => {
+                        error!("Package `{name}` not found.");
+                        None
                     },
-                    None => error!("Package `{name}` not found."),
-                }
-            }
-        }
+                })
+                .collect()
+        };
+        println!("{}", serde_json::to_string_pretty(&repos)?);
         return Ok(());
     }
 
@@ -551,11 +552,19 @@ async fn check_outdated(ctx: &Context, packages: Vec<String>) -> Result<()> {
     let to_check: Vec<Repo> = if packages.is_empty() {
         all_repos.into_inner()
     } else {
-        all_repos
+        // Report requested names that are not installed, matching cli_update
+        // behavior (they used to be silently dropped).
+        let known: Vec<Repo> = all_repos
             .into_inner()
             .into_iter()
             .filter(|r| packages.contains(&r.name))
-            .collect()
+            .collect();
+        for name in &packages {
+            if !known.iter().any(|r| &r.name == name) {
+                error!("Package `{name}` not found.");
+            }
+        }
+        known
     };
 
     let mut tasks = tokio::task::JoinSet::new();

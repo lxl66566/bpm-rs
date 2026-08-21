@@ -130,28 +130,36 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
         }
     }
 
-    // Phase 3: Parallel get_asset
-    let asset_indices: Vec<usize> = repos
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| !interactive || r.asset.is_none())
-        .map(|(i, _)| i)
-        .collect();
-
-    if !asset_indices.is_empty() {
-        let mut tasks = tokio::task::JoinSet::new();
-        for &i in &asset_indices {
-            let mut repo = std::mem::take(&mut repos[i]);
-            tasks.spawn(async move {
-                let result = repo.get_asset(interactive).await;
-                (i, repo, result)
-            });
+    // Phase 3: get_asset. Interactive selection must run sequentially:
+    // parallel prompts (FuzzySelect) would fight over the terminal. This
+    // mirrors the sequential `ask` in Phase 2.
+    if interactive {
+        for repo in &mut repos {
+            repo.get_asset(interactive).await?;
         }
+    } else {
+        let asset_indices: Vec<usize> = repos
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.asset.is_none())
+            .map(|(i, _)| i)
+            .collect();
 
-        while let Some(res) = tasks.join_next().await {
-            let (i, repo, result) = res?;
-            result?;
-            repos[i] = repo;
+        if !asset_indices.is_empty() {
+            let mut tasks = tokio::task::JoinSet::new();
+            for &i in &asset_indices {
+                let mut repo = std::mem::take(&mut repos[i]);
+                tasks.spawn(async move {
+                    let result = repo.get_asset(interactive).await;
+                    (i, repo, result)
+                });
+            }
+
+            while let Some(res) = tasks.join_next().await {
+                let (i, repo, result) = res?;
+                result?;
+                repos[i] = repo;
+            }
         }
     }
 

@@ -9,7 +9,6 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use config_file2::{LoadConfigFile, StoreConfigFile};
-use fs4::FileExt;
 
 use super::DbOperation;
 use crate::storage::{Repo, RepoList};
@@ -53,7 +52,11 @@ impl ProcessLock {
             .create(true)
             .truncate(false)
             .open(&lock_path)?;
-        file.try_lock().map_err(|e| {
+        // Call the fs4 trait method fully-qualified: std's inherent
+        // File::try_lock (stable since 1.89) would shadow it on newer
+        // toolchains and mark the import unused; this keeps MSRV 1.85
+        // compatible either way.
+        fs4::FileExt::try_lock(&file).map_err(|e| {
             anyhow!(
                 "could not lock `{}` (another bpm instance may be running): {e}",
                 lock_path.display()
@@ -119,7 +122,7 @@ impl Db {
         self.repo_list.lock().unwrap().store(&tmp_path)?;
         // fsync contents before rename, otherwise a crash right after the
         // rename could leave an empty/truncated db on disk.
-        fs::OpenOptions::new()
+        OpenOptions::new()
             .read(true)
             .write(true)
             .open(&tmp_path)?
@@ -138,7 +141,7 @@ impl Db {
 }
 
 impl DbOperation for Db {
-    fn create_or_open(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self>
+    fn create_or_open(path: impl AsRef<Path>) -> Result<Self>
     where
         Self: Sized,
     {
@@ -167,7 +170,7 @@ impl DbOperation for Db {
             .cloned()
     }
 
-    fn insert_repo(&self, repo: Repo) -> anyhow::Result<()> {
+    fn insert_repo(&self, repo: Repo) -> Result<()> {
         // Upsert by name so that updating an already-tracked repo overwrites
         // its previous record instead of appending a duplicate entry.
         self.repo_list.lock().unwrap().upsert(repo);
@@ -175,7 +178,7 @@ impl DbOperation for Db {
         Ok(())
     }
 
-    fn remove_repo(&self, name: &str) -> anyhow::Result<()> {
+    fn remove_repo(&self, name: &str) -> Result<()> {
         self.repo_list.lock().unwrap().retain(|x| x.name != name);
         self.store_atomic()?;
         Ok(())

@@ -331,7 +331,7 @@ pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Res
 pub async fn cli_update(
     ctx: &Context,
     packages: Vec<String>,
-    local: Option<std::path::PathBuf>,
+    local: Option<PathBuf>,
     interactive: bool,
 ) -> Result<()> {
     let db = ctx.db()?;
@@ -515,12 +515,14 @@ pub async fn cli_info(
         } else {
             packages
                 .iter()
-                .filter_map(|name| match db.get_repo(name) {
-                    Some(repo) => Some(repo),
-                    None => {
+                .filter_map(|name| {
+                    let repo = db.get_repo(name);
+                    if let Some(repo) = repo {
+                        Some(repo)
+                    } else {
                         error!("Package `{name}` not found.");
                         None
-                    },
+                    }
                 })
                 .collect()
         };

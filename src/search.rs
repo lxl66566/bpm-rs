@@ -3,10 +3,10 @@ use std::{sync::LazyLock as Lazy, time::Duration};
 use anyhow::{Context, Result, anyhow, bail};
 use dialoguer::{FuzzySelect, Select};
 use log::{debug, info};
+use serde::Deserialize;
 use url::Url;
 
 use crate::{cli::SortParam, storage::Repo, utils::UrlJoinAll};
-
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 static REQUEST_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
@@ -48,6 +48,35 @@ pub struct Release {
 #[derive(Debug, Clone)]
 pub struct Asset {
     pub url: String,
+}
+
+// -------- GitHub API response types --------
+// Typed so schema mismatches surface at compile time instead of as runtime
+// Value indexing bugs.
+
+#[derive(Debug, Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    assets: Vec<GithubAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubAsset {
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubSearchResult {
+    #[serde(default)]
+    items: Vec<GithubRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRepo {
+    html_url: String,
 }
 
 // -------- trait: abstraction over release platforms --------
@@ -101,28 +130,25 @@ impl Repo {
         )?;
 
         debug!("Fetch releases from API: {api}");
-        let response = REQUEST_CLIENT.get(api).send().await?;
-        if !response.status().is_success() {
-            bail!("GitHub releases API returned status: {}", response.status());
-        }
-
-        let data: serde_json::Value = response.json().await?;
-        let raw_releases = data
-            .as_array()
-            .ok_or_else(|| anyhow!("Expected array from releases endpoint"))?;
+        let releases: Vec<GithubRelease> = REQUEST_CLIENT
+            .get(api)
+            .send()
+            .await?
+            .error_for_status()
+            .with_context(|| format!("GitHub releases API for {owner}/{name}"))?
+            .json()
+            .await?;
 
         let raw = if self.allow_pre {
-            raw_releases.first()
+            releases.into_iter().next()
         } else {
-            raw_releases
-                .iter()
-                .find(|r| r["prerelease"].as_bool() == Some(false))
+            releases.into_iter().find(|r| !r.prerelease)
         };
         let raw = raw.ok_or_else(|| {
             anyhow!("No release asset found for {owner}/{name}. The repo may have no releases.")
         })?;
 
-        parse_github_release(raw, owner, name)
+        from_github_release(raw)
     }
 
     /// Select the best matching asset from a release.
@@ -191,29 +217,22 @@ impl Repo {
     }
 }
 
-/// Isolate GitHub JSON → Release conversion here.
-/// When adding GitLab etc., add a sister function.
-fn parse_github_release(raw: &serde_json::Value, owner: &str, name: &str) -> Result<Release> {
-    let tag = raw["tag_name"]
-        .as_str()
-        .with_context(|| format!("Release for {owner}/{name} has no tag_name"))?
-        .to_string();
-
-    let assets = raw["assets"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|a| a["browser_download_url"].as_str())
-                .map(|u| Asset { url: u.to_string() })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    if assets.is_empty() {
-        bail!("No downloadable assets in release for {owner}/{name}");
+/// Convert a typed GitHub release into the platform-agnostic [`Release`].
+/// (Isolated so adding GitLab etc. only needs a sister conversion.)
+fn from_github_release(raw: GithubRelease) -> Result<Release> {
+    if raw.assets.is_empty() {
+        bail!("No downloadable assets in release for tag {}", raw.tag_name);
     }
-
-    Ok(Release { tag, assets })
+    Ok(Release {
+        tag: raw.tag_name,
+        assets: raw
+            .assets
+            .into_iter()
+            .map(|a| Asset {
+                url: a.browser_download_url,
+            })
+            .collect(),
+    })
 }
 
 async fn check_url_exists(url: &str) -> bool {
@@ -257,20 +276,15 @@ impl Searchable for Repo {
         )?;
 
         debug!("search url: {url}");
-        let response = REQUEST_CLIENT.get(url).send().await?;
+        let response = REQUEST_CLIENT
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()
+            .context("GitHub search API")?;
 
-        if !response.status().is_success() {
-            bail!("GitHub search API returned status: {}", response.status());
-        }
-
-        let repos: Vec<String> = response.json::<serde_json::Value>().await?["items"]
-            .as_array()
-            .ok_or_else(|| anyhow!("No items found in search response"))?
-            .iter()
-            .filter_map(|item| item["html_url"].as_str().map(String::from))
-            .collect();
-
-        Ok(repos)
+        let result: GithubSearchResult = response.json().await?;
+        Ok(result.items.into_iter().map(|r| r.html_url).collect())
     }
 
     fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()> {
@@ -457,35 +471,34 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_github_release_valid() {
+    fn test_github_release_deserialize_valid() {
         let raw = serde_json::json!({
             "tag_name": "v1.2.3",
+            "prerelease": false,
             "assets": [
                 {"browser_download_url": "https://example.com/asset1.zip"},
                 {"browser_download_url": "https://example.com/asset2.tar.gz"},
             ]
         });
-        let release = parse_github_release(&raw, "owner", "repo").unwrap();
+        let release = from_github_release(serde_json::from_value(raw).unwrap()).unwrap();
         assert_eq!(release.tag, "v1.2.3");
         assert_eq!(release.assets.len(), 2);
     }
 
     #[test]
-    fn test_parse_github_release_no_assets() {
-        let raw = serde_json::json!({
-            "tag_name": "v1.0.0",
-            "assets": []
-        });
-        let result = parse_github_release(&raw, "owner", "repo");
-        assert!(result.is_err());
+    fn test_github_release_deserialize_no_assets() {
+        let raw = serde_json::json!({ "tag_name": "v1.0.0", "assets": [] });
+        let parsed: GithubRelease = serde_json::from_value(raw).unwrap();
+        assert!(from_github_release(parsed).is_err());
     }
 
     #[test]
-    fn test_parse_github_release_no_tag() {
+    fn test_github_search_result_deserialize() {
         let raw = serde_json::json!({
-            "assets": [{"browser_download_url": "https://example.com/a.zip"}]
+            "items": [ { "html_url": "https://github.com/owner/repo" } ]
         });
-        let result = parse_github_release(&raw, "owner", "repo");
-        assert!(result.is_err());
+        let result: GithubSearchResult = serde_json::from_value(raw).unwrap();
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].html_url, "https://github.com/owner/repo");
     }
 }

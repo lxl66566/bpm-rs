@@ -132,7 +132,7 @@ impl Db {
         if let Some(parent) = self.db_path.parent() {
             // fsync the directory so the rename itself is durable
             use std::os::fd::AsRawFd;
-            let dir = fs::File::open(parent)?;
+            let dir = File::open(parent)?;
             // SAFETY: dir is an owned, valid fd; fsync does not touch memory.
             unsafe { libc::fsync(dir.as_raw_fd()) };
         }

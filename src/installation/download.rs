@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use bpm_trauma::{
     download::{Download, Status},
     downloader::{Downloader, ProgressBarOpts, StyleOptions},
@@ -13,34 +13,38 @@ use crate::{storage::Repo, utils::FileNameExt};
 pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(String, PathBuf)>> {
     let to = to.into();
     let mut ret = vec![];
+    let mut assets = vec![];
 
-    let assets = repos
-        .into_iter()
-        .filter_map(|repo| {
-            let url_str = repo.asset.as_ref()?;
-            info!("Downloading `{}` from {url_str}", repo.name);
+    for repo in repos {
+        // Missing asset is a programming error upstream; fail with context
+        // instead of silently dropping the repo from the batch.
+        let url_str = repo
+            .asset
+            .as_ref()
+            .ok_or_else(|| anyhow!("no asset selected for `{}`", repo.name))?;
+        info!("Downloading `{}` from {url_str}", repo.name);
 
-            let url = Url::parse(url_str)
-                .map_err(|_| anyhow!("Invalid asset URL: {url_str}"))
-                .ok()?;
+        let url = Url::parse(url_str).map_err(|e| anyhow!("invalid asset URL '{url_str}': {e}"))?;
 
-            let url_path = url.path_segments()?.next_back()?;
-            let ext = url_path.preserve_extension();
+        let url_path = url
+            .path_segments()
+            .and_then(|mut s| s.next_back())
+            .ok_or_else(|| anyhow!("asset URL has no filename: {url_str}"))?;
+        let ext = url_path.preserve_extension();
 
-            let mut filename = repo.name.clone();
-            filename.push_str(ext);
+        let mut filename = repo.name.clone();
+        filename.push_str(ext);
 
-            ret.push((repo.name.clone(), to.join(filename.clone())));
-
-            Some(
-                Download::builder()
-                    .url(url.as_str())
-                    .ok()?
-                    .filename_override(filename)
-                    .build(),
-            )
-        })
-        .collect::<Vec<_>>();
+        // Build the request first, track the file only on success, otherwise
+        // the result would contain paths that were never downloaded.
+        let download = Download::builder()
+            .url(url.as_str())
+            .context("failed to build download request")?
+            .filename_override(filename.clone())
+            .build();
+        ret.push((repo.name.clone(), to.join(filename)));
+        assets.push(download);
+    }
 
     // 2. 定义进度条样式（每个 asset 一个进度条，无总体进度条）
     let style = StyleOptions::builder()
@@ -62,11 +66,25 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
 
     let summaries = downloader.download(&assets).await;
 
+    // A failed download must abort the whole batch: previously failures were
+    // only warned about, and later stages crashed with misleading
+    // "No such file" errors from unzip.
+    let mut errors = Vec::new();
     for summary in &summaries {
-        if let Status::Fail(msg) = summary.status() {
-            log::warn!("下载失败: {msg}");
+        match summary.status() {
+            Status::Success => {},
+            Status::Skipped(msg) => {
+                log::warn!("Skipped {}: {msg}", summary.download().url_as_str());
+            },
+            Status::Fail(msg) => {
+                errors.push(format!("{}: {msg}", summary.download().url_as_str()));
+            },
+            Status::NotStarted => {
+                errors.push(format!("{}: not started", summary.download().url_as_str()));
+            },
         }
     }
+    ensure!(errors.is_empty(), "some downloads failed: {errors:?}");
 
     Ok(ret)
 }

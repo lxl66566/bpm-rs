@@ -155,6 +155,38 @@ async fn install_duplicate_package_is_skipped() {
 }
 
 #[tokio::test]
+async fn install_from_local_directory() {
+    let env = TestEnv::new();
+    let src_dir = env.tmp().join("unpacked");
+    std::fs::create_dir_all(src_dir.join("sub")).unwrap();
+    #[cfg(windows)]
+    std::fs::write(src_dir.join("test-app.exe"), b"binary").unwrap();
+    #[cfg(not(windows))]
+    std::fs::write(src_dir.join("test-app"), b"binary").unwrap();
+    std::fs::write(src_dir.join("sub").join("config.toml"), b"config").unwrap();
+
+    dispatch(install_cli("test-app", &src_dir, false), env.ctx())
+        .await
+        .unwrap();
+
+    #[cfg(windows)]
+    {
+        let app_dir = env.app_path().join("test-app");
+        assert!(app_dir.join("test-app.exe").exists());
+        assert!(app_dir.join("sub").join("config.toml").exists());
+        // Source directory must not be moved away.
+        assert!(src_dir.join("sub").join("config.toml").exists());
+    }
+
+    assert!(env.db().get_repo("test-app").is_some());
+
+    dispatch(remove_cli("test-app", false), env.ctx())
+        .await
+        .unwrap();
+    assert!(!env.app_path().join("test-app").exists());
+}
+
+#[tokio::test]
 async fn install_multiple_local_packages_fails() {
     let env = TestEnv::new();
     let zip_path = env.tmp().join("test-app.zip");

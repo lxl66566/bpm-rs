@@ -256,12 +256,23 @@ pub async fn install_single(
 
     let main_path = if let Some(local) = local_path {
         let dest = tmp_path.join("local");
-        std::fs::create_dir_all(&dest)?;
-        std::fs::copy(local, dest.join(local.file_name().unwrap()))?;
-        unzip::unzip(
-            dest.join(local.file_name().unwrap()),
-            tmp_path.join("extracted"),
-        )?
+        if local.is_dir() {
+            // Copy (never move) the directory so the user's source stays
+            // intact — the Windows installer moves directory contents.
+            let mut options = fs_extra::dir::CopyOptions::new();
+            options.content_only = true;
+            options.overwrite = true;
+            std::fs::create_dir_all(&dest)?;
+            fs_extra::dir::copy(local, &dest, &options)?;
+            dest
+        } else {
+            std::fs::create_dir_all(&dest)?;
+            std::fs::copy(local, dest.join(local.file_name().unwrap()))?;
+            unzip::unzip(
+                dest.join(local.file_name().unwrap()),
+                tmp_path.join("extracted"),
+            )?
+        }
     } else {
         let downloaded = download::download(vec![&*repo], tmp_path).await?;
         ensure!(

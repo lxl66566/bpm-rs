@@ -44,7 +44,7 @@ snap                = "1"
 strum_macros        = "0.28"
 tar                 = "0.4"
 tempfile            = "3"
-tokio               = { version = "1.52", features = ["macros", "rt", "rt-multi-thread"] }
+tokio               = { version = "1.52", features = ["macros", "rt", "rt-multi-thread", "signal"] }
 url                 = { version = "2", features = ["serde"] }
 walkdir             = "2.5"
 zip                 = "8.6"

@@ -174,6 +174,13 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
     // Phase 5: Unzip and install each repo (two-phase: install all, then commit DB)
     let mut installed: Vec<Repo> = Vec::with_capacity(repos.len());
     for mut repo in repos {
+        // Safe point for graceful Ctrl-C cancellation: bailing here runs
+        // the rollback below instead of leaving orphan files behind.
+        ensure!(
+            !crate::utils::cancelled(),
+            "cancelled by user, rolling back"
+        );
+
         let file = downloaded
             .iter()
             .find(|(name, _)| *name == repo.name)
@@ -363,6 +370,12 @@ pub async fn cli_update(
 
     // Phase 1: Handle local repos sequentially (need --local flag)
     for mut repo in local_repos {
+        if crate::utils::cancelled() {
+            let repo_name = repo.name.clone();
+            error!("Cancelled by user, skipping update for {repo_name}.");
+            failed.push(repo_name);
+            continue;
+        }
         let repo_name = repo.name.clone();
         if let Some(local_path) = &local {
             info!("Updating `{repo_name}` from local path...");
@@ -403,6 +416,11 @@ pub async fn cli_update(
 
             match update_result {
                 UpdateCheck::Update { old, new } => {
+                    if crate::utils::cancelled() {
+                        error!("Cancelled by user, skipping update for {repo_name}.");
+                        failed.push(repo_name);
+                        continue;
+                    }
                     info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
                     match install_single(ctx, &mut repo, None).await {
                         Ok(()) => {

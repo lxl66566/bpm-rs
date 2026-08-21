@@ -9,11 +9,7 @@ use log::{debug, info, warn};
 use walkdir::WalkDir;
 
 use super::{Installation, only_one_file_in_dir};
-use crate::{
-    context::Context,
-    storage::{Repo, db::DbOperation},
-    utils::path::PathExt,
-};
+use crate::{context::Context, storage::Repo, utils::path::PathExt};
 
 // 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
 fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()> {
@@ -133,9 +129,10 @@ impl Installation for Repo {
                 self.name
             );
             self.is_msi = true;
-            if !ctx.dry_run {
-                ctx.db()?.insert_repo(self.clone())?;
-            }
+            // The repo record (with is_msi set) is committed by the caller's
+            // batch commit, keeping the two-phase "install all, then persist"
+            // design. Writing to the DB here would bypass rollback handling
+            // and open a second, possibly stale, Db instance.
             return Ok(());
         }
 
@@ -149,6 +146,13 @@ impl Installation for Repo {
     }
 
     fn uninstall(&mut self, ctx: &Context) -> Result<()> {
+        if self.is_msi {
+            warn!(
+                "`{}` was installed from an MSI package; its files cannot be tracked. Uninstall \
+                 it via Windows Settings > Apps.",
+                self.name
+            );
+        }
         if ctx.dry_run {
             for file in &self.installed_files {
                 info!("dry run: Remove file: {:?}", file.display());

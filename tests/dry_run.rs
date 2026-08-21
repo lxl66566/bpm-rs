@@ -25,7 +25,6 @@ fn install_cli(zip_path: &std::path::Path, dry_run: bool) -> Cli {
             quiet: true,
             dry_run,
         },
-        config: None,
         prefix: None,
     }
 }
@@ -70,7 +69,6 @@ async fn dry_run_context_remove_keeps_files() {
             packages: vec!["test-app".to_string()],
             soft: false,
         },
-        config: None,
         prefix: None,
     };
 

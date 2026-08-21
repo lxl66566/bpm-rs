@@ -25,7 +25,6 @@ fn install_cli(pkg: &str, local: &std::path::Path) -> Cli {
             quiet: true,
             dry_run: false,
         },
-        config: None,
         prefix: None,
     }
 }
@@ -36,7 +35,6 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
             packages: vec![pkg.to_string()],
             soft,
         },
-        config: None,
         prefix: None,
     }
 }
@@ -103,7 +101,6 @@ async fn remove_mixed_packages() {
             packages: vec!["pkg-a".to_string(), "non-existent".to_string()],
             soft: false,
         },
-        config: None,
         prefix: None,
     };
     dispatch(cli, env.ctx()).await.unwrap();

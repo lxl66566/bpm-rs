@@ -25,7 +25,6 @@ fn install_cli(pkg: &str, local: &std::path::Path, dry_run: bool) -> Cli {
             quiet: true,
             dry_run,
         },
-        config: None,
         prefix: None,
     }
 }
@@ -36,7 +35,6 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
             packages: vec![pkg.to_string()],
             soft,
         },
-        config: None,
         prefix: None,
     }
 }
@@ -179,7 +177,6 @@ async fn install_multiple_local_packages_fails() {
             quiet: true,
             dry_run: false,
         },
-        config: None,
         prefix: None,
     };
 

@@ -219,6 +219,18 @@ fn extract_7z(reader: impl Read + std::io::Seek, output: &Path) -> Result<()> {
          reader: &mut dyn Read,
          path: &PathBuf|
          -> std::result::Result<bool, sevenz_rust2::Error> {
+            // Defense-in-depth against zip-slip style path traversal
+            // (`../` in entry names): only allow paths that stay inside
+            // the output dir. tar/zip already sanitize via the crate APIs.
+            if !path.starts_with(output)
+                || path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(sevenz_rust2::Error::Other(
+                    format!("unsafe path in archive entry: {}", entry.name()).into(),
+                ));
+            }
             if entry.is_directory() {
                 if !path.exists() {
                     fs::create_dir_all(path)?;

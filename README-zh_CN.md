@@ -59,7 +59,7 @@ bpm -h                  # 查看更多帮助
 
 ## 配置
 
-可选配置文件位于 `~/.config/bpm/config.toml`（可用 `--config` 指定）：
+可选配置文件位于 `~/.config/bpm/config.toml`：
 
 ```toml
 # install_position = "D:/bpm"      # app/bin 根目录（db 随之移动）

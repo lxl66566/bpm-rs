@@ -7,9 +7,6 @@ use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 pub struct Cli {
     #[command(subcommand)]
     pub command: SubCommand,
-    /// Path to the config file (default: ~/.config/bpm/config.toml)
-    #[arg(short, long, value_hint(ValueHint::FilePath))]
-    pub config: Option<PathBuf>,
     /// Unix install prefix (default: /usr for root, ~/.local for non-root)
     #[arg(long, global = true, value_hint(ValueHint::DirPath))]
     pub prefix: Option<PathBuf>,

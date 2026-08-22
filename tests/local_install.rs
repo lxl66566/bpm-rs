@@ -26,7 +26,6 @@ fn install_cli(pkg: &str, local: &std::path::Path, dry_run: bool) -> Cli {
             dry_run,
         },
         prefix: None,
-        config: None,
     }
 }
 
@@ -37,7 +36,6 @@ fn remove_cli(pkg: &str, soft: bool) -> Cli {
             soft,
         },
         prefix: None,
-        config: None,
     }
 }
 
@@ -212,7 +210,6 @@ async fn install_multiple_local_packages_fails() {
             dry_run: false,
         },
         prefix: None,
-        config: None,
     };
 
     let result = dispatch(cli, env.ctx()).await;

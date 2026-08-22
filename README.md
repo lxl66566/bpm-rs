@@ -59,7 +59,7 @@ bpm -h                  # show more help
 
 ## Configuration
 
-Optional config file at `~/.config/bpm/config.toml` (override with `--config`):
+Optional config file at `~/.config/bpm/config.toml`:
 
 ```toml
 # install_position = "D:/bpm"      # root for app/bin (db moves with it)

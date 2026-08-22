@@ -1,6 +1,6 @@
 [package]
 name        = "bin-package-manager"
-version     = "0.2.1"
+version     = "0.2.0"
 edition     = "2024"
 description = "A binary package manager based on GitHub Releases"
 readme      = "README.md"
@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow              = "1"
 architecture-select = { path = "architecture-select", version = "0.2.0" }
-backon = "1.6.0"
+backon              = "1.6.0"
 bpm-trauma          = { path = "trauma", version = "3.0.0", features = ["rustls"] }
 brotli              = "8"
 bzip2               = "0.6"
@@ -30,8 +30,8 @@ config-file2        = { version = "0.7", features = ["all"] }
 dialoguer           = { version = "0.12", features = ["fuzzy-select"] }
 flate2              = "1"
 flexi_logger        = { version = "0.31", optional = true }
-fs4 = "1.1.0"
 fs_extra            = "1.3"
+fs4                 = "1.1.0"
 home                = "0.5"
 log                 = "0.4"
 lz4_flex            = "0.14"

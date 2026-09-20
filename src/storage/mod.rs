@@ -220,13 +220,13 @@ impl Repo {
     pub fn with_bin_name(mut self, bin_name: String) -> Self {
         #[cfg(windows)]
         {
-            self.bin_name = if Path::new(&bin_name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
-            {
-                bin_name
-            } else {
+            // Append .exe only when there is no extension at all: an
+            // explicit one (e.g. `tool.ps1`) is the user's choice and
+            // `tool.ps1.exe` would never match a real file.
+            self.bin_name = if Path::new(&bin_name).extension().is_none() {
                 bin_name + ".exe"
+            } else {
+                bin_name
             };
         }
         #[cfg(not(windows))]
@@ -513,6 +513,11 @@ mod tests {
 
         let repo = Repo::new("test").with_bin_name("mybin.exe".to_string());
         assert_eq!(repo.bin_name, "mybin.exe");
+
+        // An explicit extension is the user's choice; never append .exe.
+        let repo = Repo::new("test").with_bin_name("tool.ps1".to_string());
+        #[cfg(windows)]
+        assert_eq!(repo.bin_name, "tool.ps1");
     }
 
     #[test]

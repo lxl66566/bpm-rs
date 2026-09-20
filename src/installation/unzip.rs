@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use crate::installation::only_one_file_in_dir;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArchiveFormat {
+pub(crate) enum ArchiveFormat {
     // Tar + compression
     Tar,
     TarGzip,
@@ -37,37 +37,54 @@ enum ArchiveFormat {
     Brotli,
 }
 
+/// tar + compression extensions (long compound forms and their short
+/// aliases), single source of truth for [`ArchiveFormat::from_filename`] and
+/// for `preserve_extension` (`utils/path.rs`), which keeps the matched suffix
+/// intact when deriving file names.
+///
+/// `.taz` (compress/.Z) is deliberately absent: that format is not supported
+/// by the extractor.
+pub(crate) const TAR_EXTENSIONS: &[(&str, ArchiveFormat)] = &[
+    (".tar.gz", ArchiveFormat::TarGzip),
+    (".tgz", ArchiveFormat::TarGzip),
+    (".tar.bz2", ArchiveFormat::TarBzip2),
+    (".tar.bz", ArchiveFormat::TarBzip2),
+    (".tbz2", ArchiveFormat::TarBzip2),
+    (".tbz", ArchiveFormat::TarBzip2),
+    (".tar.bz3", ArchiveFormat::TarBzip3),
+    (".tbz3", ArchiveFormat::TarBzip3),
+    (".tar.lz4", ArchiveFormat::TarLz4),
+    (".tlz4", ArchiveFormat::TarLz4),
+    (".tar.xz", ArchiveFormat::TarXz),
+    (".txz", ArchiveFormat::TarXz),
+    (".tar.lzma", ArchiveFormat::TarLzma),
+    (".tlzma", ArchiveFormat::TarLzma),
+    (".tar.lz", ArchiveFormat::TarLzip),
+    (".tlz", ArchiveFormat::TarLzip),
+    (".tar.sz", ArchiveFormat::TarSnappy),
+    (".tsz", ArchiveFormat::TarSnappy),
+    (".tar.zst", ArchiveFormat::TarZstd),
+    (".tzst", ArchiveFormat::TarZstd),
+    (".tar.zstd", ArchiveFormat::TarZstd),
+];
+
 impl ArchiveFormat {
     fn from_path(path: &Path) -> Option<Self> {
-        let filename = path.file_name()?.to_str()?.to_ascii_lowercase();
-        Self::from_filename(&filename)
+        Self::from_filename(path.file_name()?.to_str()?)
     }
 
-    // filename has been lowercased
+    /// Case-insensitive: input is lowercased here, the single normalization
+    /// point.
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
     fn from_filename(filename: &str) -> Option<Self> {
         let filename = filename.to_ascii_lowercase();
         let filename = filename.as_str();
-        // Compound extensions (tar + compression) checked first
-        match filename {
-            f if f.ends_with(".tar.gz") || f.ends_with(".tgz") => return Some(Self::TarGzip),
-            f if f.ends_with(".tar.bz2")
-                || f.ends_with(".tar.bz")
-                || f.ends_with(".tbz2")
-                || f.ends_with(".tbz") =>
-            {
-                return Some(Self::TarBzip2);
-            },
-            f if f.ends_with(".tar.bz3") || f.ends_with(".tbz3") => return Some(Self::TarBzip3),
-            f if f.ends_with(".tar.lz4") || f.ends_with(".tlz4") => return Some(Self::TarLz4),
-            f if f.ends_with(".tar.xz") || f.ends_with(".txz") => return Some(Self::TarXz),
-            f if f.ends_with(".tar.lzma") || f.ends_with(".tlzma") => return Some(Self::TarLzma),
-            f if f.ends_with(".tar.lz") || f.ends_with(".tlz") => return Some(Self::TarLzip),
-            f if f.ends_with(".tar.sz") || f.ends_with(".tsz") => return Some(Self::TarSnappy),
-            f if f.ends_with(".tar.zst") || f.ends_with(".tzst") || f.ends_with(".tar.zstd") => {
-                return Some(Self::TarZstd);
-            },
-            _ => {},
+        // Tar + compression extensions (long and short forms) first
+        if let Some((_, fmt)) = TAR_EXTENSIONS
+            .iter()
+            .find(|(ext, _)| filename.ends_with(ext))
+        {
+            return Some(*fmt);
         }
         // Archive formats
         match filename {
@@ -537,6 +554,14 @@ mod tests {
         assert_eq!(
             ArchiveFormat::from_filename("FOO.ZIP"),
             Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormat::from_path(Path::new("FOO.ZIP")),
+            Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormat::from_path(Path::new("pkg.Tar.ZSTD")),
+            Some(ArchiveFormat::TarZstd)
         );
         // Format aliases
         assert_eq!(

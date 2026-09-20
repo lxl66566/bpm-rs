@@ -8,6 +8,8 @@ use std::{
 
 use walkdir::WalkDir;
 
+use crate::installation::unzip::TAR_EXTENSIONS;
+
 pub trait PathExt {
     fn glob_name(&self, pattern: &str) -> Vec<PathBuf>;
     /// create dir if not exist
@@ -122,22 +124,12 @@ pub trait FileNameExt {
 impl FileNameExt for str {
     fn preserve_extension(&self) -> &str {
         let lower = self.to_ascii_lowercase();
-        let compound_extensions = [
-            ".tar.gz",
-            ".tar.bz2",
-            ".tar.bz3",
-            ".tar.lz4",
-            ".tar.xz",
-            ".tar.lzma",
-            ".tar.lz",
-            ".tar.sz",
-            ".tar.zst",
-        ];
-        for cext in &compound_extensions {
-            if lower.ends_with(cext) {
-                let ext_start = self.len() - cext.len();
-                return &self[ext_start..];
-            }
+        // Long tar compounds must be kept whole (`.tar.gz`, not `.gz`). Short
+        // aliases (`.tgz`) yield the same result as the plain fallback below;
+        // sharing the table keeps the two lists from drifting apart.
+        if let Some((ext, _)) = TAR_EXTENSIONS.iter().find(|(ext, _)| lower.ends_with(ext)) {
+            // ASCII-only lowercasing above preserves byte length.
+            return &self[self.len() - ext.len()..];
         }
         if let Some(dot_pos) = self.rfind('.') {
             return &self[dot_pos..];
@@ -236,6 +228,7 @@ mod tests {
         assert_eq!("foo.tar.bz2".preserve_extension(), ".tar.bz2");
         assert_eq!("foo.tar.xz".preserve_extension(), ".tar.xz");
         assert_eq!("foo.tar.zst".preserve_extension(), ".tar.zst");
+        assert_eq!("foo.tar.zstd".preserve_extension(), ".tar.zstd");
         assert_eq!("foo.tgz".preserve_extension(), ".tgz");
         assert_eq!("foo.zip".preserve_extension(), ".zip");
         assert_eq!("foo.7z".preserve_extension(), ".7z");

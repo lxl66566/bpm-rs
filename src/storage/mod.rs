@@ -288,12 +288,28 @@ impl From<Url> for Repo {
     }
 }
 
+/// Returns the repo part when `s` is the `owner/repo` shorthand:
+/// no scheme, exactly one `/`, both sides non-empty.
+fn shorthand_repo_name(s: &str) -> Option<String> {
+    let mut parts = s.split('/');
+    let owner = parts.next()?;
+    let repo = parts.next()?;
+    (parts.next().is_none() && !owner.is_empty() && !repo.is_empty()).then(|| repo.to_string())
+}
+
 impl From<&str> for Repo {
     #[inline]
     fn from(value: &str) -> Self {
         match Url::parse(value) {
             Ok(url) => Self::from(url),
-            Err(_) => Self::new(value),
+            // "owner/repo" shorthand: resolve owner/repo via `by_fullname`
+            // and take the repo part as the package name — a `/` inside
+            // `name` would nest download/install paths. The gate above
+            // guarantees two non-empty parts, so `by_fullname` cannot fail;
+            // the fallback only covers that invariant breaking.
+            Err(_) => shorthand_repo_name(value)
+                .and_then(|name| Self::new(name).by_fullname(value).ok())
+                .unwrap_or_else(|| Self::new(value)),
         }
     }
 }
@@ -428,6 +444,35 @@ mod tests {
         let repo = Repo::from("my-package");
         assert_eq!(repo.name, "my-package");
         assert!(repo.repo_owner.is_none());
+    }
+
+    #[test]
+    fn test_from_str_fullname_shorthand() {
+        let repo = Repo::from("lxl66566/bpm-rs");
+        assert_eq!(repo.name, "bpm-rs");
+        assert_eq!(repo.repo_name.as_deref(), Some("bpm-rs"));
+        assert_eq!(repo.repo_owner.as_deref(), Some("lxl66566"));
+        assert_eq!(
+            repo.url().unwrap().as_str(),
+            "https://github.com/lxl66566/bpm-rs"
+        );
+    }
+
+    #[test]
+    fn test_from_str_shorthand_boundaries() {
+        // None of these is a valid shorthand: they must fall back to being
+        // treated as a plain (unresolved) package name.
+        for s in [
+            "my-package",
+            "user/repo/extra",
+            "user//repo",
+            "/repo",
+            "user/",
+            "/",
+        ] {
+            let repo = Repo::from(s);
+            assert!(repo.repo_owner.is_none(), "`{s}` must not resolve an owner");
+        }
     }
 
     #[test]

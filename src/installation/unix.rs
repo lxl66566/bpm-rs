@@ -294,7 +294,8 @@ impl Installation for Repo {
         }
 
         if self.one_bin || first_layer.len() == 1 {
-            let bin_file = if first_layer.len() == 1 && first_layer[0].is_file() {
+            let single_file = first_layer.len() == 1 && first_layer[0].is_file();
+            let bin_file = if single_file {
                 first_layer[0].clone()
             } else {
                 let candidates = src.glob_name(&self.bin_name);
@@ -311,7 +312,13 @@ impl Installation for Repo {
                 debug!("selected binary: {bin_file:?}");
                 let dst = unix_paths.bin().join(bin_file.file_name().unwrap());
                 self.install_file(&bin_file, &dst, dry_run, Some(0o755))?;
-                if self.one_bin {
+                // A single-file package is fully installed now; return early
+                // like one_bin does. Otherwise the `n == bin_name` arm in the
+                // first_layer loop below installs the same file a second
+                // time, renaming the just-installed binary to `<bin>.old`
+                // (which uninstall would then restore — breaking the
+                // install→uninstall idempotence guarantee).
+                if self.one_bin || single_file {
                     return Ok(());
                 }
             }
@@ -582,9 +589,10 @@ mod tests {
 
     #[test]
     fn test_install_single_binary_tracks_bin_once() {
-        // A single binary whose name matches bin_name is recorded by both the
-        // single-file branch and the bin_name match in the loop; installed_files
-        // is a BTreeSet so the duplicate path collapses to a single entry.
+        // A single binary whose name matches bin_name: the single-file
+        // branch installs it and returns early (it must not fall through to
+        // the bin_name arm in the first_layer loop, which used to install it
+        // a second time and leave a stale `.old` behind on real installs).
         let pkg = tempfile::tempdir().unwrap();
         let src = pkg.path();
         fs::write(src.join("mybin"), "#!/bin/sh\n").unwrap();

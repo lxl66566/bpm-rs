@@ -113,6 +113,44 @@ fn only_one_file_empty() {
     assert!(result.is_none());
 }
 
+#[cfg(unix)]
+#[test]
+fn unix_single_binary_install_uninstall_is_idempotent() {
+    // Real (non-dry-run) roundtrip. The old code fell through from the
+    // single-file branch into the `n == bin_name` arm, installing the same
+    // binary twice: the fresh binary was renamed to `mybin.old` and copied
+    // again, and uninstall then "revived" it via restore_old.
+    let pkg = tempfile::tempdir().unwrap();
+    std::fs::write(pkg.path().join("mybin"), "#!/bin/sh\n").unwrap();
+
+    let root = tempfile::tempdir().unwrap();
+    // bpm does not create the prefix's bin dir itself; on a real system it
+    // already exists (/usr/bin, ~/.local/bin), so create it like the user
+    // environment would.
+    let bin_dir = root.path().join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+
+    let ctx = Context::new().with_prefix(Some(root.path().to_path_buf()));
+
+    let mut repo = Repo::new("mybin");
+    repo.bin_name = "mybin".to_string();
+
+    repo.install(pkg.path(), &ctx).unwrap();
+
+    let bin = bin_dir.join("mybin");
+    assert!(bin.is_file());
+    assert!(!bin_dir.join("mybin.old").exists(), "no .old residue");
+    assert_eq!(std::fs::read_dir(&bin_dir).unwrap().count(), 1);
+
+    repo.uninstall(&ctx).unwrap();
+    assert!(!bin.exists(), "uninstall must remove the binary");
+    assert_eq!(
+        std::fs::read_dir(&bin_dir).unwrap().count(),
+        0,
+        "uninstall must leave nothing behind"
+    );
+}
+
 #[test]
 fn install_and_uninstall_roundtrip_db() {
     let base = tempfile::tempdir().unwrap();

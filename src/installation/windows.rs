@@ -8,7 +8,7 @@ use anyhow::{Result, ensure};
 use log::{debug, info, warn};
 use walkdir::WalkDir;
 
-use super::{Installation, only_one_file_in_dir};
+use super::Installation;
 use crate::{context::Context, storage::Repo, utils::path::PathExt};
 
 // 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
@@ -37,42 +37,61 @@ fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()>
     Ok(())
 }
 
+/// Find the MSI installer among the extraction result, if any.
+///
+/// A single `.msi` used to be recognized only when it was the *sole* file;
+/// packages shipping `foo.msi + readme.txt` fell through to the regular
+/// install path and were moved as data files. Any top-level `.msi` counts now.
+fn find_msi(src: &Path) -> std::io::Result<Option<PathBuf>> {
+    let mut msis: Vec<PathBuf> = fs::read_dir(src)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
+        })
+        .collect();
+    // Deterministic pick when several MSIs ship together (e.g. x86/x64
+    // variants); bpm cannot tell the right one apart.
+    msis.sort();
+    if msis.len() > 1 {
+        warn!("multiple msi files found: {msis:?}, using the first one");
+    }
+    Ok(msis.into_iter().next())
+}
+
 fn check_and_install_msi(src: impl AsRef<Path>, dry_run: bool) -> Result<bool> {
-    let src = src.as_ref();
-    if let Some(file) = only_one_file_in_dir(src)?
-        && file
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("msi"))
-    {
-        info!("Start to install msi file {}.", file.display());
-        if dry_run {
-            info!("Dry run, skip installation.");
-            return Ok(true);
-        }
-        // /quiet and /qr contradict each other (fully silent vs reduced UI);
-        // use /quiet only.
-        let output = std::process::Command::new("msiexec.exe")
-            .args([
-                "/i",
-                file.to_str().ok_or_else(|| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, "msi path is not UTF-8")
-                })?,
-                "/quiet",
-                "/norestart",
-            ])
-            .status()
-            .map_err(|e| anyhow::anyhow!("failed to spawn msiexec.exe: {e}"))?;
-        // A non-zero msiexec exit code means the installation failed; the
-        // previous code treated a spawned-but-failed install as success.
-        ensure!(
-            output.success(),
-            "msiexec exited with {} for {}",
-            output.code().unwrap_or(-1),
-            file.display()
-        );
+    let Some(file) = find_msi(src.as_ref())? else {
+        return Ok(false);
+    };
+    info!("Start to install msi file {}.", file.display());
+    if dry_run {
+        info!("Dry run, skip installation.");
         return Ok(true);
     }
-    Ok(false)
+    // /quiet and /qr contradict each other (fully silent vs reduced UI);
+    // use /quiet only.
+    let output = std::process::Command::new("msiexec.exe")
+        .args([
+            "/i",
+            file.to_str().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "msi path is not UTF-8")
+            })?,
+            "/quiet",
+            "/norestart",
+        ])
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to spawn msiexec.exe: {e}"))?;
+    // A non-zero msiexec exit code means the installation failed; the
+    // previous code treated a spawned-but-failed install as success.
+    ensure!(
+        output.success(),
+        "msiexec exited with {} for {}",
+        output.code().unwrap_or(-1),
+        file.display()
+    );
+    Ok(true)
 }
 
 /// Coupled filesystem + tracking helpers for an installed repo.
@@ -366,23 +385,26 @@ mod tests {
     fn test_check_and_install_msi_dry_run() {
         let dir = tempfile::tempdir().unwrap();
 
-        // 没有文件时，应该返回 false
-        let res = check_and_install_msi(dir.path(), true).unwrap();
-        assert!(!res);
+        // No files at all -> false.
+        assert!(!check_and_install_msi(dir.path(), true).unwrap());
 
-        // 放一个 txt 文件，应该返回 false
-        let txt_file = dir.path().join("test.txt");
-        fs::write(&txt_file, "dummy").unwrap();
-        let res = check_and_install_msi(dir.path(), true).unwrap();
-        assert!(!res);
+        // A single non-msi file -> false.
+        fs::write(dir.path().join("test.txt"), "dummy").unwrap();
+        assert!(!check_and_install_msi(dir.path(), true).unwrap());
 
-        // 替换成 msi 文件，应该匹配到并返回 true (由于是 dry_run 不会真实执行安装)
-        fs::remove_file(&txt_file).unwrap();
-        let msi_file = dir.path().join("installer.msi");
-        fs::write(&msi_file, "dummy installer").unwrap();
+        // A sole msi -> matched (dry_run skips the actual msiexec call).
+        fs::remove_file(dir.path().join("test.txt")).unwrap();
+        fs::write(dir.path().join("installer.msi"), "dummy installer").unwrap();
+        assert!(check_and_install_msi(dir.path(), true).unwrap());
 
-        let res = check_and_install_msi(dir.path(), true).unwrap();
-        assert!(res);
+        // msi + extra files -> still matched; a sole-msi requirement used to
+        // send such packages down the regular install path.
+        fs::write(dir.path().join("readme.txt"), "readme").unwrap();
+        assert!(check_and_install_msi(dir.path(), true).unwrap());
+
+        // Multiple msis -> the deterministically first one is used.
+        fs::write(dir.path().join("aaa.msi"), "dummy installer").unwrap();
+        assert!(check_and_install_msi(dir.path(), true).unwrap());
     }
 
     #[test]

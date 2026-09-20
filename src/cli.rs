@@ -115,8 +115,8 @@ pub enum SubCommand {
     Info {
         /// Package names to query (empty = list all)
         packages: Vec<String>,
-        /// Output in JSON format (for scripting)
-        #[arg(long)]
+        /// Output in JSON format (for scripting); conflicts with --outdated
+        #[arg(long, conflicts_with = "outdated")]
         json: bool,
         /// Check for available updates (requires network)
         #[arg(long)]
@@ -138,4 +138,23 @@ pub enum SortParam {
     Forks,
     HelpWantedIssues,
     Updated,
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::Cli;
+
+    #[test]
+    fn info_json_conflicts_with_outdated() {
+        // Rejected at parse time: the json branch returns early and would
+        // silently drop --outdated.
+        assert!(
+            Cli::try_parse_from(["bpm", "info", "--json", "--outdated"]).is_err(),
+            "--json with --outdated must be rejected"
+        );
+        assert!(Cli::try_parse_from(["bpm", "info", "--json"]).is_ok());
+        assert!(Cli::try_parse_from(["bpm", "info", "--outdated"]).is_ok());
+    }
 }

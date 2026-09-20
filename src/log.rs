@@ -1,6 +1,13 @@
+use std::{io::IsTerminal, sync::LazyLock};
+
 use colored::Colorize;
-use flexi_logger::{DeferredNow, Logger, Record};
+use flexi_logger::{DeferredNow, LogSpecification, Logger, Record};
 use log::LevelFilter;
+
+/// `colored` auto-detects the *stdout* TTY, but flexi_logger writes to
+/// stderr: decide by the stream we actually write to, or redirected logs
+/// would still carry ANSI codes.
+static STDERR_IS_TTY: LazyLock<bool> = LazyLock::new(|| std::io::stderr().is_terminal());
 
 #[inline]
 pub fn log_init() {
@@ -12,17 +19,31 @@ pub fn log_init() {
 
 #[inline]
 pub fn log_init_with_default_level(level: LevelFilter) {
-    let spec = match level {
-        LevelFilter::Off => "off".to_string(),
-        LevelFilter::Error => "error".to_string(),
-        LevelFilter::Warn => "warn".to_string(),
-        LevelFilter::Info => "info, reqwest=info".to_string(),
-        LevelFilter::Debug => "debug, reqwest=info".to_string(),
-        LevelFilter::Trace => "trace, reqwest=info".to_string(),
+    // `reqwest=warn`, not `=info`: equal to the global level it silenced
+    // nothing; warn is what hides the per-request INFO noise.
+    let default = match level {
+        LevelFilter::Off => "off",
+        LevelFilter::Error => "error",
+        LevelFilter::Warn => "warn",
+        LevelFilter::Info => "info, reqwest=warn",
+        LevelFilter::Debug => "debug, reqwest=warn",
+        LevelFilter::Trace => "trace, reqwest=warn",
     };
 
-    Logger::try_with_str(spec)
-        .unwrap()
+    // RUST_LOG takes priority when set: release builds have no other way to
+    // raise the level for troubleshooting. The reqwest override is not
+    // appended to a user spec — the user's directives are authoritative (and
+    // they can silence reqwest themselves). A malformed RUST_LOG falls back
+    // to the built-in spec with a note instead of aborting startup.
+    let spec = match std::env::var("RUST_LOG") {
+        Ok(user) => LogSpecification::parse(&user).unwrap_or_else(|e| {
+            eprintln!("bpm: ignoring invalid RUST_LOG `{user}` ({e}); using `{default}`");
+            LogSpecification::parse(default).expect("built-in log spec is valid")
+        }),
+        Err(_) => LogSpecification::parse(default).expect("built-in log spec is valid"),
+    };
+
+    Logger::with(spec)
         .format_for_stderr(log_format)
         .start()
         .unwrap_or_else(|e| panic!("Logger initialization failed: {e}"));
@@ -38,6 +59,11 @@ fn log_format(
 }
 
 fn colored_level(level: log::Level) -> colored::ColoredString {
+    if !*STDERR_IS_TTY {
+        // Plain (uncolored) ColoredString: no ANSI codes in redirected logs.
+        // (as_str: String::clear is the inherent Vec::clear, not Colorize's.)
+        return format!("{level:5}").as_str().clear();
+    }
     match level {
         log::Level::Error => format!("{:5}", "ERROR").red(),
         log::Level::Warn => format!("{:5}", "WARN").yellow(),

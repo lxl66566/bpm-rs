@@ -356,10 +356,10 @@ impl Installation for Repo {
             self.install_file(&service_file, &dst, dry_run, Some(0o644))?;
         }
 
-        let has_bin = self
-            .installed_files
-            .iter()
-            .any(|f| f.to_str().is_some_and(|s| s.contains("bin")));
+        // Component-wise prefix check (Path::starts_with), not a substring
+        // match: "sbin" or "share/binutils" must not count as "under bin".
+        let bin_dir = unix_paths.bin();
+        let has_bin = self.installed_files.iter().any(|f| f.starts_with(&bin_dir));
         if !has_bin {
             warn!("No binary file found, please check the release package.");
         }

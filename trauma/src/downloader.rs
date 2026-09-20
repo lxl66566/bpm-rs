@@ -1,6 +1,10 @@
 //! Represents the download controller.
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use bon::Builder;
 use futures::stream::{self, StreamExt};
@@ -51,6 +55,14 @@ pub struct Downloader {
     resumable: bool,
     /// Custom HTTP headers.
     headers: Option<HeaderMap>,
+    /// HTTP client shared by all `download()` calls, so the connection pool
+    /// and TLS sessions are reused instead of being rebuilt per call.
+    /// Initialized lazily on first use because it must incorporate `headers`,
+    /// which a builder field default cannot reference.
+    /// `download_with_proxy` cannot use it: a Client is immutable once built,
+    /// so a per-call proxy needs a dedicated client.
+    #[builder(skip)]
+    client: OnceLock<Client>,
 }
 
 impl Default for Downloader {
@@ -64,7 +76,8 @@ impl Downloader {
 
     /// Starts the downloads.
     pub async fn download(&self, downloads: &[Download]) -> Vec<Summary> {
-        self.download_inner(downloads, None).await
+        let client = self.shared_client();
+        self.download_inner(downloads, &client).await
     }
 
     /// Starts the downloads with proxy.
@@ -73,16 +86,19 @@ impl Downloader {
         downloads: &[Download],
         proxy: reqwest::Proxy,
     ) -> Vec<Summary> {
-        self.download_inner(downloads, Some(proxy)).await
+        // A Client cannot be reconfigured after build, so a per-call proxy
+        // rules out the shared client; build a dedicated one.
+        let client = self.build_client(Some(proxy));
+        self.download_inner(downloads, &client).await
     }
 
-    /// Starts the downloads.
-    async fn download_inner(
-        &self,
-        downloads: &[Download],
-        proxy: Option<reqwest::Proxy>,
-    ) -> Vec<Summary> {
-        // Prepare the HTTP client.
+    /// Get the client shared by all `download()` calls, creating it once.
+    fn shared_client(&self) -> Client {
+        self.client.get_or_init(|| self.build_client(None)).clone()
+    }
+
+    /// Build an HTTP client honoring the configured headers and proxy.
+    fn build_client(&self, proxy: Option<reqwest::Proxy>) -> Client {
         let mut client_builder = Client::builder();
         if let Some(proxy) = proxy {
             client_builder = client_builder.proxy(proxy);
@@ -90,8 +106,11 @@ impl Downloader {
         if let Some(headers) = &self.headers {
             client_builder = client_builder.default_headers(headers.clone());
         }
-        let client = client_builder.build().expect("the client to build");
+        client_builder.build().expect("the client to build")
+    }
 
+    /// Starts the downloads.
+    async fn download_inner(&self, downloads: &[Download], client: &Client) -> Vec<Summary> {
         // Prepare the progress bars container.
         // There is no global (overall) progress bar: each asset gets its own.
         let multi = if self.style_options.is_hidden() {
@@ -103,7 +122,7 @@ impl Downloader {
 
         // Download the files asynchronously.
         stream::iter(downloads)
-            .map(|d| self.fetch(&client, d, multi.clone()))
+            .map(|d| self.fetch(client, d, multi.clone()))
             .buffer_unordered(self.concurrent_downloads)
             .collect::<Vec<_>>()
             .await

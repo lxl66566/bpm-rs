@@ -437,32 +437,105 @@ mod tests {
         repo.repo_owner = Some("owner".to_string());
         repo.repo_name = Some("repo".to_string());
 
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let release = Release {
-                tag: "v1.0.0".to_string(),
-                assets: vec![
-                    Asset {
-                        url: "https://example.com/test-linux-amd64.deb".to_string(),
-                    },
-                    Asset {
-                        url: "https://example.com/test-linux-amd64.tar.gz".to_string(),
-                    },
-                    Asset {
-                        url: "https://example.com/test-linux-amd64.zip".to_string(),
-                    },
-                ],
-            };
+        // Current platform spelled the way release assets usually do.
+        let (os_kw, arch_kw) = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("windows", "x86_64") => ("win32", "x64"),
+            ("windows", "aarch64") => ("win32", "arm64"),
+            ("windows", "x86") => ("win32", "386"),
+            ("linux", "x86_64") => ("linux", "amd64"),
+            ("linux", "aarch64") => ("linux", "arm64"),
+            ("linux", "x86") => ("linux", "386"),
+            ("macos", "x86_64") => ("darwin", "x64"),
+            ("macos", "aarch64") => ("darwin", "arm64"),
+            _ => return, // no fixed expectation on other targets
+        };
+        let release = Release {
+            tag: "v1.0.0".to_string(),
+            assets: ["deb", "tar.gz", "zip"]
+                .map(|ext| Asset {
+                    url: format!("https://example.com/test-{os_kw}-{arch_kw}.{ext}"),
+                })
+                .to_vec(),
+        };
 
-            // Without filter: should pick a supported format
-            let selected = repo.select_asset(&release, false).unwrap();
-            assert!(selected.ends_with(".tar.gz") || selected.ends_with(".zip"));
+        // Without filter: bpm cannot extract .deb; the first supported
+        // format in list order (.tar.gz) must win.
+        let selected = repo.select_asset(&release, false).unwrap();
+        assert_eq!(
+            selected,
+            format!("https://example.com/test-{os_kw}-{arch_kw}.tar.gz")
+        );
 
-            // With filter: should narrow to .zip only
-            repo.asset_filter = vec![".zip".to_string()];
-            let selected = repo.select_asset(&release, false).unwrap();
-            assert!(selected.ends_with(".zip"));
-        }
+        // With filter: narrow to .zip only
+        repo.asset_filter = vec![".zip".to_string()];
+        let selected = repo.select_asset(&release, false).unwrap();
+        assert_eq!(
+            selected,
+            format!("https://example.com/test-{os_kw}-{arch_kw}.zip")
+        );
+    }
+
+    /// Real typstyle release assets (.exe mixed with .pdb debug symbols).
+    /// Guards the best-first direction of `select_asset`: the regression once
+    /// picked the .pdb (review P0-1).
+    #[test]
+    fn test_select_asset_typstyle_best_first() {
+        let mut repo = Repo::new("typstyle");
+        repo.repo_owner = Some("typst".to_string());
+        repo.repo_name = Some("typstyle".to_string());
+
+        let release = Release {
+            tag: "v0.13.0".to_string(),
+            assets: [
+                "typstyle-alpine-x64",
+                "typstyle-alpine-x64.debug",
+                "typstyle-darwin-arm64",
+                "typstyle-darwin-arm64.dwarf",
+                "typstyle-darwin-x64",
+                "typstyle-darwin-x64.dwarf",
+                "typstyle-linux-arm64",
+                "typstyle-linux-arm64.debug",
+                "typstyle-linux-armhf",
+                "typstyle-linux-armhf.debug",
+                "typstyle-linux-x64",
+                "typstyle-linux-x64.debug",
+                "typstyle-win32-arm64.exe",
+                "typstyle-win32-arm64.pdb",
+                "typstyle-win32-x64.exe",
+                "typstyle-win32-x64.pdb",
+            ]
+            .map(|name| Asset {
+                url: format!("https://github.com/typst/typstyle/releases/download/v0.13.0/{name}"),
+            })
+            .to_vec(),
+        };
+
+        let selected = repo.select_asset(&release, false).unwrap();
+        let expected = if cfg!(windows) {
+            if cfg!(target_arch = "aarch64") {
+                "typstyle-win32-arm64.exe"
+            } else {
+                "typstyle-win32-x64.exe"
+            }
+        } else if cfg!(target_os = "macos") {
+            if cfg!(target_arch = "aarch64") {
+                "typstyle-darwin-arm64"
+            } else {
+                "typstyle-darwin-x64"
+            }
+        } else if cfg!(target_os = "linux") {
+            if cfg!(target_arch = "aarch64") {
+                "typstyle-linux-arm64"
+            } else {
+                "typstyle-linux-x64"
+            }
+        } else {
+            return;
+        };
+        assert!(
+            selected.ends_with(expected),
+            "expected *{expected}, got {selected}"
+        );
     }
 
     #[test]

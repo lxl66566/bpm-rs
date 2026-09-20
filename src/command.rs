@@ -11,7 +11,7 @@ use crate::{
     context::Context,
     installation::{Installation, download, unzip},
     search::{Searchable, UpdateCheck},
-    storage::{LibcPref, Repo, RepoList, db::DbOperation},
+    storage::{InstalledFiles, LibcPref, Repo, RepoList, db::DbOperation},
 };
 
 pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
@@ -95,11 +95,9 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
             },
             Err(e) => {
                 error!("Failed to install `{}`: {e}", repo.name);
-                if !ctx.dry_run {
-                    info!("Restoring...");
-                    let mut repo_for_cleanup = repo.clone();
-                    let _ = repo_for_cleanup.uninstall(ctx);
-                }
+                // Fresh install: the empty baseline makes the rollback remove
+                // everything this attempt tracked.
+                rollback_failed_install(ctx, &repo, &InstalledFiles::new());
                 return Err(e);
             },
         }
@@ -206,9 +204,8 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                     for mut r in installed {
                         let _ = r.uninstall(ctx);
                     }
-                    let mut repo_for_cleanup = repo.clone();
-                    let _ = repo_for_cleanup.uninstall(ctx);
                 }
+                rollback_failed_install(ctx, &repo, &InstalledFiles::new());
                 return Err(e);
             },
         }
@@ -237,6 +234,27 @@ fn extract_downloaded(
         .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
     let extracted = tmp.join(format!("{}_extracted", repo.name));
     unzip::unzip(file, extracted)
+}
+
+/// Roll back a failed install attempt: uninstall only the files the attempt
+/// added on top of `before` (the tracked set when it started), restoring
+/// `.old` backups along the way, so no orphan files are left that neither
+/// the DB nor the previous record knows about (review P1-13).
+///
+/// Paths already in `before` belong to the previous install and are kept:
+/// the DB still records them, so a full uninstall would trade orphans for
+/// holes that doctor then reports. Files the attempt overwrote stay under
+/// their tracked path (the same state a successful update leaves behind).
+/// For a fresh install (`before` empty) this removes everything the attempt
+/// tracked. No-op on dry-run (nothing was written).
+fn rollback_failed_install(ctx: &Context, repo: &Repo, before: &InstalledFiles) {
+    if ctx.dry_run {
+        return;
+    }
+    info!("Rolling back the failed install of `{}`...", repo.name);
+    let mut cleanup = repo.clone();
+    cleanup.installed_files = repo.installed_files.difference(before).cloned().collect();
+    let _ = cleanup.uninstall(ctx);
 }
 
 fn build_repo_list(
@@ -406,6 +424,7 @@ pub async fn cli_update(
         let repo_name = repo.name.clone();
         if let Some(local_path) = &local {
             info!("Updating `{repo_name}` from local path...");
+            let before = repo.installed_files.clone();
             match install_single(ctx, &mut repo, Some(local_path)).await {
                 Ok(()) => {
                     repo.installed_time = Some(SystemTime::now());
@@ -415,6 +434,7 @@ pub async fn cli_update(
                 Err(e) => {
                     failed.push(repo_name.clone());
                     error!("Failed to update {repo_name}: {e}");
+                    rollback_failed_install(ctx, &repo, &before);
                 },
             }
         } else {
@@ -500,6 +520,7 @@ pub async fn cli_update(
                         continue;
                     }
                     let repo_name = repo.name.clone();
+                    let before = repo.installed_files.clone();
                     let main_path =
                         match extract_downloaded(&downloaded, download_tmp.path(), &repo) {
                             Ok(path) => path,
@@ -518,6 +539,7 @@ pub async fn cli_update(
                         Err(e) => {
                             failed.push(repo_name.clone());
                             error!("Failed to update {repo_name}: {e}");
+                            rollback_failed_install(ctx, &repo, &before);
                         },
                     }
                 }
@@ -735,4 +757,63 @@ pub async fn cli_doctor(ctx: &Context) -> Result<()> {
         info!("All packages verified successfully.");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// Pin the P1-13 rollback contract for a failed update install: files
+    /// the attempt added are removed (no orphans outside the DB record),
+    /// interrupted writes are restored from their `.old` backup, and files
+    /// owned by the previous install survive untouched.
+    #[cfg(unix)]
+    #[test]
+    fn rollback_failed_update_removes_only_added_files() {
+        use std::fs;
+
+        use super::{Context, Repo, rollback_failed_install};
+
+        let root = tempfile::tempdir().unwrap();
+        let ctx = Context::new().with_prefix(Some(root.path().to_path_buf()));
+
+        // Previous install: tracked set + files on disk (the DB record).
+        let bin = root.path().join("bin").join("tool");
+        let share = root.path().join("share").join("data.txt");
+        fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        fs::create_dir_all(share.parent().unwrap()).unwrap();
+        fs::write(&bin, "v1").unwrap();
+        fs::write(&share, "v1").unwrap();
+
+        let mut repo = Repo::new("tool");
+        repo.installed_files.insert(bin.clone());
+        repo.installed_files.insert(root.path().join("share"));
+        repo.installed_files.insert(share.clone());
+        let before = repo.installed_files.clone();
+
+        // Failed update attempt state: a new file was written (orphan
+        // candidate), a tracked binary was overwritten (old content parked
+        // in `tool.old`), and one write was interrupted after its rename
+        // (`half.old` exists, `half` does not).
+        let added = root.path().join("lib").join("new.so");
+        fs::create_dir_all(added.parent().unwrap()).unwrap();
+        fs::write(&added, "v2").unwrap();
+        fs::write(root.path().join("bin").join("tool.old"), "v1").unwrap();
+        fs::write(&bin, "v2").unwrap();
+        let half = root.path().join("bin").join("half");
+        fs::write(root.path().join("bin").join("half.old"), "v1").unwrap();
+        repo.installed_files.insert(root.path().join("lib"));
+        repo.installed_files.insert(added.clone());
+        repo.installed_files.insert(half.clone());
+
+        rollback_failed_install(&ctx, &repo, &before);
+
+        assert!(!added.exists(), "added-by-attempt file must be removed");
+        assert_eq!(
+            fs::read_to_string(&half).unwrap(),
+            "v1",
+            "interrupted write must be restored from its .old backup"
+        );
+        // The previous install's files survive (the DB still records them).
+        assert!(bin.is_file());
+        assert!(share.is_file());
+    }
 }

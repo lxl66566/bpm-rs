@@ -431,6 +431,19 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Empty search results must fail with the repo name spelled out;
+    /// swallowing them led to a misleading `repo_owner not set` later.
+    #[test]
+    fn test_ask_empty_items_errors() {
+        let mut repo = Repo::new("no-such-package");
+        let err = repo.ask(vec![], true).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("No repos found for 'no-such-package'"),
+            "unexpected error: {err}"
+        );
+    }
+
     #[test]
     fn test_select_asset_with_filter() {
         let mut repo = Repo::new("test-pkg");

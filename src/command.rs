@@ -126,10 +126,12 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
         // Phase 2: Sequential ask in original order
         results.sort_by_key(|(i, _)| *i);
         for (i, search_result) in results {
+            // Every repo here had no url when spawned (search_indices filters
+            // on that), so empty items can only mean the search found
+            // nothing. `ask` reports the precise error; silently continuing
+            // used to end in the misleading "repo_owner not set".
             let items = search_result?;
-            if !items.is_empty() {
-                repos[i].ask(items, ctx.quiet)?;
-            }
+            repos[i].ask(items, ctx.quiet)?;
         }
     }
 

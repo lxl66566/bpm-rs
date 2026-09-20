@@ -89,9 +89,13 @@ pub trait Searchable {
     fn ask(&mut self, items: Vec<String>, quiet: bool) -> Result<()>;
     /// Fetch the latest release and select a matching asset.
     async fn get_asset(&mut self, interactive: bool) -> Result<()>;
-    /// Check for a newer version, try URL-replacement fast path, fall back to
-    /// full asset selection.
-    async fn update_asset(&mut self, interactive: bool) -> UpdateCheck;
+    /// Check for a newer version, trying the URL-replacement fast path.
+    ///
+    /// Terminal-free by design so it can run in parallel: when the fast path
+    /// misses, [`UpdateCheck::PendingSelection`] defers the asset selection
+    /// to the caller — parallel prompts (`FuzzySelect`) would fight over the
+    /// terminal.
+    async fn check_update(&mut self) -> UpdateCheck;
 }
 
 /// Result of an update check.
@@ -101,6 +105,10 @@ pub enum UpdateCheck {
     UpToDate { current: String, latest: String },
     /// A newer release is available and ready to install.
     Update { old: String, new: String },
+    /// A newer release is available, but the asset still has to be picked
+    /// from `release` by the caller via [`Repo::select_update_asset`] —
+    /// sequentially, because the selection may prompt.
+    PendingSelection { old: String, release: Release },
     /// The update check failed; carries the underlying error.
     Failed(anyhow::Error),
 }
@@ -169,6 +177,20 @@ impl Repo {
         })?;
 
         from_github_release(raw)
+    }
+
+    /// Resolve a [`UpdateCheck::PendingSelection`]: pick the asset from the
+    /// fetched release (prompts when `interactive`) and record version and
+    /// asset together.
+    pub(crate) fn select_update_asset(
+        &mut self,
+        release: &Release,
+        interactive: bool,
+    ) -> Result<()> {
+        self.asset = Some(self.select_asset(release, interactive)?);
+        self.version = Some(release.tag.clone());
+        info!("Selected asset: {}", self.asset.as_deref().unwrap_or(""));
+        Ok(())
     }
 
     /// Select the best matching asset from a release.
@@ -342,7 +364,7 @@ impl Searchable for Repo {
         Ok(())
     }
 
-    async fn update_asset(&mut self, interactive: bool) -> UpdateCheck {
+    async fn check_update(&mut self) -> UpdateCheck {
         let Some(old_version) = self.version.clone() else {
             return UpdateCheck::Failed(anyhow!("no version recorded for this repo"));
         };
@@ -363,9 +385,9 @@ impl Searchable for Repo {
         }
 
         // Fast path: replace old version string with new one in the asset URL
-        let candidate = old_asset.replace(&old_version, &release.tag);
         // Fast path failure must fall through to full selection, not abort
         // the update: a transient error on the probe should not kill it.
+        let candidate = old_asset.replace(&old_version, &release.tag);
         if candidate != old_asset && check_url_exists(&candidate).await.unwrap_or(false) {
             self.version = Some(release.tag.clone());
             self.asset = Some(candidate);
@@ -375,16 +397,11 @@ impl Searchable for Repo {
             };
         }
 
-        // Fallback: reuse the already-fetched release for full asset selection
-        let asset = match self.select_asset(&release, interactive) {
-            Ok(asset) => asset,
-            Err(e) => return UpdateCheck::Failed(e),
-        };
-        self.version = Some(release.tag.clone());
-        self.asset = Some(asset);
-        UpdateCheck::Update {
+        // Fallback: full asset selection. Deferred to the caller because it
+        // may prompt (FuzzySelect) and must therefore run sequentially.
+        UpdateCheck::PendingSelection {
             old: old_version,
-            new: release.tag,
+            release,
         }
     }
 }

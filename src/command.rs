@@ -1,4 +1,7 @@
-use std::{path::PathBuf, time::SystemTime};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use anyhow::{Result, anyhow, bail, ensure};
 use log::{debug, error, info};
@@ -184,14 +187,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
             "cancelled by user, rolling back"
         );
 
-        let file = downloaded
-            .iter()
-            .find(|(name, _)| *name == repo.name)
-            .map(|(_, path)| path)
-            .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
-
-        let extracted = download_tmp.path().join(format!("{}_extracted", repo.name));
-        let main_path = unzip::unzip(file, extracted)?;
+        let main_path = extract_downloaded(&downloaded, download_tmp.path(), &repo)?;
 
         match repo.install(&main_path, ctx) {
             Ok(()) => {
@@ -226,6 +222,21 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Extract `repo`'s entry from a completed download batch into `tmp`.
+fn extract_downloaded(
+    downloaded: &[(String, PathBuf)],
+    tmp: &Path,
+    repo: &Repo,
+) -> Result<PathBuf> {
+    let file = downloaded
+        .iter()
+        .find(|(name, _)| *name == repo.name)
+        .map(|(_, path)| path)
+        .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
+    let extracted = tmp.join(format!("{}_extracted", repo.name));
+    unzip::unzip(file, extracted)
 }
 
 fn build_repo_list(
@@ -265,7 +276,7 @@ fn build_repo_list(
 pub async fn install_single(
     ctx: &Context,
     repo: &mut Repo,
-    local_path: Option<&std::path::Path>,
+    local_path: Option<&Path>,
 ) -> Result<()> {
     let tmp_dir = tempfile::tempdir()?;
     let tmp_path = tmp_dir.path();
@@ -415,33 +426,91 @@ pub async fn cli_update(
         }
     }
 
-    // Phase 2: Parallel check for updates (network-bound)
+    // Phase 2: Parallel update checks (network-bound). `check_update` never
+    // touches the terminal, so spawning is safe; interactive asset selection
+    // is deferred to Phase 3 — parallel prompts (FuzzySelect) would fight
+    // over the terminal, the same reasoning as cli_install Phase 3.
+    let mut checked: Vec<(usize, Repo, UpdateCheck)> = Vec::new();
     if !remote_repos.is_empty() {
         let mut tasks = tokio::task::JoinSet::new();
-        for mut repo in remote_repos {
-            let use_interactive = interactive || repo.interactive;
+        for (i, mut repo) in remote_repos.into_iter().enumerate() {
             tasks.spawn(async move {
-                let update_result = repo.update_asset(use_interactive).await;
-                (repo, update_result)
+                let check = repo.check_update().await;
+                (i, repo, check)
             });
         }
-
-        // Phase 3: Sequential install for repos that have updates
         while let Some(res) = tasks.join_next().await {
-            let (mut repo, update_result) = res?;
-            let repo_name = repo.name.clone();
+            checked.push(res?);
+        }
+        // JoinSet yields results in completion order; restore the input order
+        // so the log output does not depend on network timing.
+        checked.sort_unstable_by_key(|(i, ..)| *i);
+    }
 
-            match update_result {
-                UpdateCheck::Update { old, new } => {
+    // Phase 3: Sequential reporting and asset selection (the only stage that
+    // may prompt).
+    let mut to_install: Vec<Repo> = Vec::new();
+    for (_, mut repo, check) in checked {
+        let repo_name = repo.name.clone();
+        match check {
+            UpdateCheck::Update { old, new } => {
+                info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
+                to_install.push(repo);
+            },
+            UpdateCheck::PendingSelection { old, release } => {
+                let use_interactive = interactive || repo.interactive;
+                match repo.select_update_asset(&release, use_interactive) {
+                    Ok(()) => {
+                        info!(
+                            "`{repo_name}` has an update: {old} -> {}. Updating...",
+                            release.tag
+                        );
+                        to_install.push(repo);
+                    },
+                    Err(e) => {
+                        failed.push(repo_name.clone());
+                        error!("Failed to check update for {repo_name}: {e}");
+                    },
+                }
+            },
+            UpdateCheck::UpToDate { current, latest } => {
+                info!(
+                    "`{repo_name}` is already up to date (current: {current}, latest: {latest})."
+                );
+            },
+            UpdateCheck::Failed(e) => {
+                failed.push(repo_name.clone());
+                error!("Failed to check update for {repo_name}: {e}");
+            },
+        }
+    }
+
+    // Phase 4 + 5: batch download (trauma parallelizes internally), then
+    // unzip and install sequentially — mirrors the cli_install pipeline
+    // instead of one tempdir + download + install per package.
+    if !to_install.is_empty() {
+        let download_tmp = tempfile::tempdir()?;
+        let repo_refs: Vec<&Repo> = to_install.iter().collect();
+        match download::download(repo_refs, download_tmp.path(), ctx.quiet).await {
+            Ok(downloaded) => {
+                for mut repo in to_install {
                     if crate::utils::cancelled() {
-                        error!("Cancelled by user, skipping update for {repo_name}.");
-                        failed.push(repo_name);
+                        error!("Cancelled by user, skipping update for {}.", repo.name);
+                        failed.push(repo.name.clone());
                         continue;
                     }
-                    info!("`{repo_name}` has an update: {old} -> {new}. Updating...");
-                    match install_single(ctx, &mut repo, None).await {
+                    let repo_name = repo.name.clone();
+                    let main_path =
+                        match extract_downloaded(&downloaded, download_tmp.path(), &repo) {
+                            Ok(path) => path,
+                            Err(e) => {
+                                failed.push(repo_name.clone());
+                                error!("Failed to update {repo_name}: {e}");
+                                continue;
+                            },
+                        };
+                    match repo.install(&main_path, ctx) {
                         Ok(()) => {
-                            repo.version = Some(new);
                             repo.installed_time = Some(SystemTime::now());
                             db.insert_repo(repo)?;
                             info!("`{repo_name}` updated successfully.");
@@ -451,18 +520,15 @@ pub async fn cli_update(
                             error!("Failed to update {repo_name}: {e}");
                         },
                     }
-                },
-                UpdateCheck::UpToDate { current, latest } => {
-                    info!(
-                        "`{repo_name}` is already up to date (current: {current}, latest: \
-                         {latest})."
-                    );
-                },
-                UpdateCheck::Failed(e) => {
-                    failed.push(repo_name.clone());
-                    error!("Failed to check update for {repo_name}: {e}");
-                },
-            }
+                }
+            },
+            // The download batch fails as a whole; without per-package
+            // granularity every pending update is reported failed and the
+            // summary / non-zero exit below still surface it.
+            Err(e) => {
+                error!("Failed to download updates: {e:#}");
+                failed.extend(to_install.iter().map(|r| r.name.clone()));
+            },
         }
     }
 

@@ -7,7 +7,6 @@ homepage    = "https://github.com/lxl66566/bpm-rs/tree/main/architecture-select"
 keywords    = ["arch", "architecture", "select", "select-arch", "system"]
 license     = "MIT"
 name        = "architecture-select"
-readme      = "README.md"
 repository  = "https://github.com/lxl66566/bpm-rs/"
 version     = "0.2.0"
 

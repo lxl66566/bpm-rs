@@ -3,13 +3,17 @@ name        = "bin-package-manager"
 version     = "0.2.0"
 edition     = "2024"
 description = "A binary package manager based on GitHub Releases"
-readme      = "README.md"
-homepage    = "https://github.com/lxl66566/bpm-rs"
 repository  = "https://github.com/lxl66566/bpm-rs"
 license     = "MIT"
 keywords    = ["binary", "github-releases", "package-manager"]
 categories  = ["command-line-utilities"]
 exclude     = ["AGENTS.md", "architecture-select"]
+
+# Package + workspace root: the root package is a member implicitly, listed
+# here for clarity. resolver 3 matches edition 2024.
+[workspace]
+members  = [".", "architecture-select", "trauma"]
+resolver = "3"
 
 [[bin]]
 name              = "bpm"

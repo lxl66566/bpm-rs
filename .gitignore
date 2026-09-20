@@ -1,4 +1,6 @@
 /target
+architecture-select/target
+trauma/target
 test
 /bpm
 /ouch

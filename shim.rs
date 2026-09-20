@@ -30,12 +30,16 @@ fn main() {
 
     for line in content.lines() {
         let line = line.trim();
-        if let Some(rest) = line.strip_prefix("path") {
-            let value = rest.trim_start_matches(&[' ', '='][..]).trim();
-            target_path = value.trim_matches('"').to_string();
-        } else if let Some(rest) = line.strip_prefix("args") {
-            let value = rest.trim_start_matches(&[' ', '='][..]).trim();
-            extra_args = value.trim_matches('"').to_string();
+        // Parse `key = value` (or `key=value`), values optionally quoted.
+        // A bare strip_prefix("path") would also match `pathname = ...`.
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"');
+        match key.trim() {
+            "path" => target_path = value.to_string(),
+            "args" => extra_args = value.to_string(),
+            _ => {}
         }
     }
 

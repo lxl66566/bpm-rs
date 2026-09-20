@@ -118,15 +118,21 @@ fn match_inner(
     combination: Combination,
     case_sensitive: bool,
 ) -> bool {
-    prompts_with_match_pos
-        .iter()
-        .any_or_all(combination, |(prompt, match_position)| {
-            if case_sensitive {
+    // Lowercase the target once instead of allocating per prompt.
+    if case_sensitive {
+        prompts_with_match_pos
+            .iter()
+            .any_or_all(combination, |(prompt, match_position)| {
                 match_position.exec(item, prompt)
-            } else {
-                match_position.exec(&item.to_lowercase(), &prompt.to_lowercase())
-            }
-        })
+            })
+    } else {
+        let item_lower = item.to_lowercase();
+        prompts_with_match_pos
+            .iter()
+            .any_or_all(combination, |(prompt, match_position)| {
+                match_position.exec(&item_lower, &prompt.to_lowercase())
+            })
+    }
 }
 
 /// Filter items by matching against prompts.

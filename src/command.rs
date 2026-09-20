@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::SystemTime};
 
 use anyhow::{Result, anyhow, bail, ensure};
 use log::{debug, error, info};
@@ -86,6 +86,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                 if !ctx.dry_run {
                     repo.local = true;
                     repo.interactive = interactive;
+                    repo.installed_time = Some(SystemTime::now());
                     db.insert_repo(repo)?;
                 }
             },
@@ -194,6 +195,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
             Ok(()) => {
                 info!("`{}` installed successfully.", repo.name);
                 repo.interactive = interactive;
+                repo.installed_time = Some(SystemTime::now());
                 installed.push(repo);
             },
             Err(e) => {
@@ -381,6 +383,7 @@ pub async fn cli_update(
             info!("Updating `{repo_name}` from local path...");
             match install_single(ctx, &mut repo, Some(local_path)).await {
                 Ok(()) => {
+                    repo.installed_time = Some(SystemTime::now());
                     db.insert_repo(repo)?;
                     info!("`{repo_name}` updated successfully.");
                 },
@@ -425,6 +428,7 @@ pub async fn cli_update(
                     match install_single(ctx, &mut repo, None).await {
                         Ok(()) => {
                             repo.version = Some(new);
+                            repo.installed_time = Some(SystemTime::now());
                             db.insert_repo(repo)?;
                             info!("`{repo_name}` updated successfully.");
                         },

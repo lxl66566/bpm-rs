@@ -56,6 +56,7 @@ async fn full_lifecycle_install_then_remove() {
     let repo = db.get_repo("test-app").unwrap();
     assert_eq!(repo.name, "test-app");
     assert!(!repo.installed_files.is_empty());
+    assert!(repo.installed_time.is_some(), "install must be timestamped");
 
     let app_dir = env.app_path().join("test-app");
     assert!(app_dir.exists());

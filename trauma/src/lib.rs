@@ -9,7 +9,7 @@
 pub mod download;
 pub mod downloader;
 
-use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH};
+use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
 use thiserror::Error;
 
 /// Errors that can happen when using this crate.
@@ -41,6 +41,12 @@ pub(crate) trait ResponseExt {
     /// Returns None if the "content-disposition" header is missing or if its
     /// value cannot be parsed as a string.
     fn content_disposition(&self) -> Option<String>;
+
+    /// Get the total size from the "content-range" header (`bytes N-M/T`).
+    ///
+    /// Returns None if the header is missing, malformed, or the total is
+    /// unknown (`*`).
+    fn content_range_total(&self) -> Option<u64>;
 }
 
 impl ResponseExt for reqwest::Response {
@@ -64,5 +70,43 @@ impl ResponseExt for reqwest::Response {
             .get(reqwest::header::CONTENT_DISPOSITION)
             .and_then(|v| v.to_str().ok())
             .map(String::from)
+    }
+
+    fn content_range_total(&self) -> Option<u64> {
+        parse_content_range_total(self.headers().get(CONTENT_RANGE)?.to_str().ok()?)
+    }
+}
+
+/// Parse the total size out of a "content-range" header value.
+///
+/// For a 206 response, `Content-Length` is the remaining length, not the total
+/// size; the total lives in the `Content-Range` value (`bytes N-M/T`), so only
+/// the segment after the last `/` is needed.
+pub(crate) fn parse_content_range_total(value: &str) -> Option<u64> {
+    // Strictly `bytes N-M/T` (or `bytes */T`); anything else is malformed.
+    let (unit, total) = value.rsplit_once('/')?;
+    if !unit.trim().starts_with("bytes") {
+        return None;
+    }
+    let total = total.trim();
+    if total == "*" {
+        return None;
+    }
+    total.parse().ok()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_content_range_total() {
+        assert_eq!(parse_content_range_total("bytes 100-999/1234"), Some(1234));
+        // Unknown total.
+        assert_eq!(parse_content_range_total("bytes 100-999/*"), None);
+        // Malformed values must not parse into a bogus total.
+        assert_eq!(parse_content_range_total("garbage"), None);
+        assert_eq!(parse_content_range_total("1234"), None);
+        assert_eq!(parse_content_range_total("bytes 0-0/0"), Some(0));
     }
 }

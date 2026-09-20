@@ -193,8 +193,8 @@ impl Downloader {
         // Update the summary accordingly.
         let summary = summary.resumable(can_resume);
 
-        // Only appends to the file when resumable is set and we can resume.
-        let can_append = self.resumable && can_resume;
+        // Whether the GET request below will ask for the remaining bytes.
+        let range_requested = can_resume;
 
         // Check whether or not we need to download the file.
         let content_length_value = response.content_length_header().unwrap_or_default();
@@ -205,12 +205,12 @@ impl Downloader {
         }
 
         // Build the GET request.
-        log::debug!("Fetching {}", &download.url_as_str());
+        log::debug!("Fetching {}", download.url_as_str());
         let res = match self
             .send_with_retry(|| {
                 let mut req = client.get(download.url_as_str());
                 // If resumable is turned on, request the remaining bytes.
-                if self.resumable && can_resume {
+                if range_requested {
                     req = req.header(RANGE, format!("bytes={size_on_disk}-"));
                 }
                 // Add extra headers if needed.
@@ -233,31 +233,38 @@ impl Downloader {
             Err(e) => return summary.status(Status::Fail(e.to_string())).build(),
         };
 
-        // Update the size with the value from the response headers from the
-        // GET request, if possible.
-        let size = res.content_length_header().unwrap_or_default();
+        // Decide how the response body relates to the partial file on disk.
+        let decision = ResumeDecision::new(range_requested, &res, size_on_disk);
+        if decision.append {
+            log::debug!("Resuming download at byte {size_on_disk}.");
+        } else if range_requested {
+            log::debug!(
+                "Server ignored the Range request ({}); restarting from scratch.",
+                res.status()
+            );
+        }
 
         // Update the summary with the collected details.
         let summary = summary.statuscode(res.status());
 
         // If there is nothing else to download for this file, we can return.
-        if size_on_disk > 0 && size_on_disk == size {
+        if size_on_disk > 0 && size_on_disk == decision.total {
             return summary
-                .size(size)
+                .size(decision.total)
                 .status(Status::Skipped(Self::ALREADY_DOWNLOADED.into()))
                 .build();
         }
 
         // Create the progress bar for this asset.
-        // If the download is being resumed, the progress bar position is
-        // updated to start where the download stopped before.
+        // The bar covers the whole file: when resuming, it starts at the
+        // on-disk offset; when restarting from scratch, it starts at zero.
         let child_opts = self.style_options.child.clone();
 
         // Add the progress bar to the multi progress container.
         let pb = multi.add(
             child_opts
-                .to_progress_bar(size)
-                .with_position(size_on_disk)
+                .to_progress_bar(decision.total)
+                .with_position(decision.start)
                 .with_message(filename),
         );
 
@@ -266,25 +273,25 @@ impl Downloader {
         log::debug!("Creating destination directory {:?}", output_dir);
         if let Err(e) = tokio::fs::create_dir_all(output_dir).await {
             return summary
-                .size(size)
+                .size(decision.total)
                 .status(Status::Fail(e.to_string()))
                 .build();
         }
 
         // Prepare the destination file.
-        log::debug!("Creating destination file {:?}", &output);
+        log::debug!("Creating destination file {output:?}");
         let mut file = match OpenOptions::new()
             .create(true)
             .write(true)
-            .append(can_append)
-            .truncate(!can_append)
+            .append(decision.append)
+            .truncate(!decision.append)
             .open(output)
             .await
         {
             Ok(file) => file,
             Err(e) => {
                 return summary
-                    .size(size)
+                    .size(decision.total)
                     .status(Status::Fail(e.to_string()))
                     .build();
             },
@@ -292,8 +299,8 @@ impl Downloader {
 
         // Prepare the final size.
         // We will add the amount of bytes downloaded to the amount of bytes
-        // that are already on disk.
-        let mut final_size = size_on_disk;
+        // that are already on disk (or to zero when restarting from scratch).
+        let mut final_size = decision.start;
 
         // Download the file chunk by chunk.
         log::debug!("Retrieving chunks...");
@@ -334,6 +341,64 @@ impl Downloader {
 
         // Return a successful summary with the actual download size.
         summary.size(final_size).status(Status::Success).build()
+    }
+}
+
+/// How to treat the GET response body relative to the partial file on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResumeDecision {
+    /// Append the response body to the partial file instead of truncating it.
+    append: bool,
+    /// Offset the progress bar and the final size start from.
+    start: u64,
+    /// Total file size, used for the skip check and the progress bar total.
+    total: u64,
+}
+
+impl ResumeDecision {
+    /// Evaluate the GET response against the partial file on disk.
+    fn new(range_requested: bool, res: &Response, size_on_disk: u64) -> Self {
+        Self::decide(
+            range_requested,
+            res.status(),
+            res.content_range_total(),
+            res.content_length_header(),
+            size_on_disk,
+        )
+    }
+
+    /// Pure decision core, kept free of `Response` for table-driven tests.
+    ///
+    /// Only a `206 Partial Content` response to our Range request carries the
+    /// remaining bytes; a server that ignores Range replies `200` with the
+    /// full body, which must replace the partial file instead of being
+    /// appended to it, or the result would be silently corrupt.
+    fn decide(
+        range_requested: bool,
+        status: StatusCode,
+        content_range_total: Option<u64>,
+        content_length: Option<u64>,
+        size_on_disk: u64,
+    ) -> Self {
+        let append = range_requested && status == StatusCode::PARTIAL_CONTENT;
+        let remaining = content_length.unwrap_or_default();
+        let total = if append {
+            // For a 206, Content-Length is the remaining length, not the
+            // total; the total lives in Content-Range (`bytes N-M/T`), with
+            // offset + remaining as the fallback when the header is missing.
+            content_range_total.unwrap_or(size_on_disk + remaining)
+        } else {
+            remaining
+        };
+        Self {
+            append,
+            start: if append {
+                size_on_disk
+            } else {
+                0
+            },
+            total,
+        }
     }
 }
 
@@ -496,5 +561,50 @@ mod test {
         ));
         assert!(!Downloader::is_transient_status(StatusCode::NOT_FOUND));
         assert!(!Downloader::is_transient_status(StatusCode::OK));
+    }
+
+    #[test]
+    fn test_resume_decision() {
+        // Regression (P0-5): a 200 response to a Range request carries the
+        // full body; appending it to the partial file would corrupt it.
+        assert_eq!(
+            ResumeDecision::decide(true, StatusCode::OK, None, Some(100), 40),
+            ResumeDecision {
+                append: false,
+                start: 0,
+                total: 100,
+            }
+        );
+        // 206: append at the on-disk offset; the total comes from
+        // Content-Range since Content-Length is only the remaining length.
+        assert_eq!(
+            ResumeDecision::decide(true, StatusCode::PARTIAL_CONTENT, Some(100), Some(60), 40),
+            ResumeDecision {
+                append: true,
+                start: 40,
+                total: 100,
+            }
+        );
+        // 206 without Content-Range: total = offset + remaining. This also
+        // pins the old false-skip bug: disk == remaining (40 == 40) must not
+        // look like a completed download of 40 bytes.
+        assert_eq!(
+            ResumeDecision::decide(true, StatusCode::PARTIAL_CONTENT, None, Some(40), 40),
+            ResumeDecision {
+                append: true,
+                start: 40,
+                total: 80,
+            }
+        );
+        // No Range requested: plain full download, restart at zero even when
+        // a stale partial file exists on disk.
+        assert_eq!(
+            ResumeDecision::decide(false, StatusCode::OK, None, Some(100), 40),
+            ResumeDecision {
+                append: false,
+                start: 0,
+                total: 100,
+            }
+        );
     }
 }

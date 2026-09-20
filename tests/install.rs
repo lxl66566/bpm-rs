@@ -124,11 +124,10 @@ fn unix_single_binary_install_uninstall_is_idempotent() {
     std::fs::write(pkg.path().join("mybin"), "#!/bin/sh\n").unwrap();
 
     let root = tempfile::tempdir().unwrap();
-    // bpm does not create the prefix's bin dir itself; on a real system it
-    // already exists (/usr/bin, ~/.local/bin), so create it like the user
-    // environment would.
+    // The prefix's bin dir deliberately does NOT pre-exist: install_file
+    // must create the destination parents itself (a fresh --prefix or a
+    // missing ~/.local/bin used to fail with NotFound).
     let bin_dir = root.path().join("bin");
-    std::fs::create_dir_all(&bin_dir).unwrap();
 
     let ctx = Context::new().with_prefix(Some(root.path().to_path_buf()));
 

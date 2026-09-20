@@ -134,6 +134,13 @@ impl Repo {
             return Ok(());
         }
 
+        // fs::copy (and rename_old below) never create dst's parent: a
+        // fresh --prefix or a missing ~/.local/bin used to fail the whole
+        // install with NotFound.
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
         if dst.exists() {
             rename_old(dst)?;
         }
@@ -421,6 +428,25 @@ mod tests {
         assert!(paths.lib().ends_with("lib"));
         assert!(paths.share().ends_with("share"));
         assert!(paths.include().ends_with("include"));
+    }
+
+    /// File targets must create their destination parents: a fresh --prefix
+    /// (or missing ~/.local/bin) used to fail with `NotFound`.
+    #[test]
+    fn test_install_file_creates_dst_parents() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("tool");
+        fs::write(&src, "#!/bin/sh\n").unwrap();
+
+        // Nested parents do not exist.
+        let root = tempfile::tempdir().unwrap();
+        let dst = root.path().join("bin/nested/deeply/tool");
+
+        let mut repo = Repo::new("tool");
+        repo.install_file(&src, &dst, false, Some(0o755)).unwrap();
+
+        assert!(dst.is_file());
+        assert!(repo.installed_files.contains(&dst));
     }
 
     #[test]

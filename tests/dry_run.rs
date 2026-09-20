@@ -137,7 +137,11 @@ async fn dry_run_context_remove_keeps_files() {
     dispatch(install_cli(&zip_path, false), env.ctx())
         .await
         .unwrap();
-    assert!(env.app_path().join("test-app").exists());
+    #[cfg(windows)]
+    let installed = env.app_path().join("test-app");
+    #[cfg(unix)]
+    let installed = env.bin_path().join("test-app");
+    assert!(installed.exists());
 
     let remove_cli = Cli {
         command: SubCommand::Remove {
@@ -157,7 +161,7 @@ async fn dry_run_context_remove_keeps_files() {
         "dry-run must not remove the db entry"
     );
     assert!(
-        env.app_path().join("test-app").exists(),
+        installed.exists(),
         "dry-run uninstall should not delete files"
     );
 }

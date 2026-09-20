@@ -49,8 +49,12 @@ async fn soft_remove_keeps_files() {
         .await
         .unwrap();
 
-    let app_dir = env.app_path().join("test-app");
-    assert!(app_dir.join("test-app").exists());
+    // Windows keeps the extracted app dir; unix installs into the bin dir.
+    #[cfg(windows)]
+    let installed = env.app_path().join("test-app").join("test-app");
+    #[cfg(unix)]
+    let installed = env.bin_path().join("test-app");
+    assert!(installed.exists());
 
     dispatch(remove_cli("test-app", true), env.ctx())
         .await
@@ -60,10 +64,7 @@ async fn soft_remove_keeps_files() {
         env.db().get_repo("test-app").is_none(),
         "db entry should be removed after soft remove"
     );
-    assert!(
-        app_dir.join("test-app").exists(),
-        "files should remain after soft remove"
-    );
+    assert!(installed.exists(), "files should remain after soft remove");
 }
 
 #[tokio::test]
@@ -108,6 +109,14 @@ async fn remove_mixed_packages() {
     assert!(env.db().get_repo("pkg-a").is_none());
     assert!(env.db().get_repo("non-existent").is_none());
     assert!(env.db().get_repo("pkg-b").is_some());
-    assert!(!env.app_path().join("pkg-a").exists());
-    assert!(env.app_path().join("pkg-b").exists());
+    #[cfg(windows)]
+    {
+        assert!(!env.app_path().join("pkg-a").exists());
+        assert!(env.app_path().join("pkg-b").exists());
+    }
+    #[cfg(unix)]
+    {
+        assert!(!env.bin_path().join("pkg-a").exists());
+        assert!(env.bin_path().join("pkg-b").exists());
+    }
 }

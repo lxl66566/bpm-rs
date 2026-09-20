@@ -58,25 +58,28 @@ async fn full_lifecycle_install_then_remove() {
     assert!(!repo.installed_files.is_empty());
     assert!(repo.installed_time.is_some(), "install must be timestamped");
 
-    let app_dir = env.app_path().join("test-app");
-    assert!(app_dir.exists());
-    #[cfg(windows)]
-    assert!(app_dir.join("test-app.exe").exists());
-    #[cfg(not(windows))]
-    assert!(app_dir.join("test-app").exists());
-
+    // Windows moves the package into <install_pos>/app/<name>; unix installs
+    // the matched binary directly into the prefix bin dir.
     #[cfg(windows)]
     {
+        let app_dir = env.app_path().join("test-app");
+        assert!(app_dir.exists());
+        assert!(app_dir.join("test-app.exe").exists());
         assert!(env.bin_path().join("test-app.exe").exists());
         assert!(env.bin_path().join("test-app.shim").exists());
     }
+    #[cfg(unix)]
+    assert!(env.bin_path().join("test-app").exists());
 
     dispatch(remove_cli("test-app", false), env.ctx())
         .await
         .unwrap();
 
     assert!(env.db().get_repo("test-app").is_none());
-    assert!(!app_dir.exists());
+    #[cfg(windows)]
+    assert!(!env.app_path().join("test-app").exists());
+    #[cfg(unix)]
+    assert!(!env.bin_path().join("test-app").exists());
 }
 
 #[tokio::test]
@@ -100,19 +103,19 @@ async fn install_from_zip_with_wrapping_directory() {
         .await
         .unwrap();
 
-    let app_dir = env.app_path().join("test-app");
-    #[cfg(windows)]
-    assert!(app_dir.join("test-app.exe").exists());
-    #[cfg(not(windows))]
-    assert!(app_dir.join("test-app").exists());
-    assert!(app_dir.join("README.md").exists());
-    assert!(app_dir.join("config.toml").exists());
-
     #[cfg(windows)]
     {
+        let app_dir = env.app_path().join("test-app");
+        assert!(app_dir.join("test-app.exe").exists());
+        assert!(app_dir.join("README.md").exists());
+        assert!(app_dir.join("config.toml").exists());
         assert!(env.bin_path().join("test-app.exe").exists());
         assert!(env.bin_path().join("test-app.shim").exists());
     }
+    // On unix only the matched binary is installed into the prefix bin dir;
+    // loose data files like README.md are not part of the unix layout.
+    #[cfg(unix)]
+    assert!(env.bin_path().join("test-app").exists());
 
     assert!(env.db().get_repo("test-app").is_some());
 
@@ -120,7 +123,10 @@ async fn install_from_zip_with_wrapping_directory() {
         .await
         .unwrap();
     assert!(env.db().get_repo("test-app").is_none());
-    assert!(!app_dir.exists());
+    #[cfg(windows)]
+    assert!(!env.app_path().join("test-app").exists());
+    #[cfg(unix)]
+    assert!(!env.bin_path().join("test-app").exists());
 }
 
 #[tokio::test]
@@ -178,13 +184,18 @@ async fn install_from_local_directory() {
         // Source directory must not be moved away.
         assert!(src_dir.join("sub").join("config.toml").exists());
     }
+    #[cfg(unix)]
+    assert!(env.bin_path().join("test-app").exists());
 
     assert!(env.db().get_repo("test-app").is_some());
 
     dispatch(remove_cli("test-app", false), env.ctx())
         .await
         .unwrap();
+    #[cfg(windows)]
     assert!(!env.app_path().join("test-app").exists());
+    #[cfg(unix)]
+    assert!(!env.bin_path().join("test-app").exists());
 }
 
 #[tokio::test]

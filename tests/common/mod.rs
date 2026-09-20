@@ -33,9 +33,13 @@ impl TestEnv {
     }
 
     pub fn ctx(&self) -> Context {
+        // The pinned prefix keeps unix installs inside the temp dir — the
+        // default (~/.local) would write integration tests into the real
+        // user home. Windows ignores the prefix and uses install_position.
         Context::new()
             .with_install_position(&self.install_pos)
             .with_db_path(&self.db_path)
+            .with_prefix(Some(self.install_pos.clone()))
     }
 
     pub fn ctx_with_dry_run(&self) -> Context {

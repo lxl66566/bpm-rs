@@ -196,6 +196,20 @@ fn extract_zip(reader: impl Read + std::io::Seek, output: &Path) -> Result<()> {
             {
                 fs::create_dir_all(p)?;
             }
+            // Zip stores a symlink as a regular entry whose content is the
+            // link target path (mirrors the zip crate's own extract). On
+            // unix recreate it as a real symlink; on windows symlink
+            // creation needs privileges, so keep the old behavior of
+            // writing the target path as a plain file.
+            #[cfg(unix)]
+            if file.is_symlink() {
+                use std::os::unix::ffi::OsStrExt;
+                let mut target = Vec::new();
+                file.read_to_end(&mut target)?;
+                let target = Path::new(std::ffi::OsStr::from_bytes(&target));
+                std::os::unix::fs::symlink(target, &outpath)?;
+                continue;
+            }
             let mut outfile = File::create(&outpath)?;
             std::io::copy(&mut file, &mut outfile)?;
 
@@ -566,6 +580,30 @@ mod tests {
                 assert_eq!(main, to);
             }
         }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_zip_symlink() -> Result<()> {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir()?;
+        let zip_path = dir.path().join("links.zip");
+        let writer = File::create(&zip_path)?;
+        let mut zip = zip::ZipWriter::new(writer);
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("real.txt", options)?;
+        zip.write_all(b"content")?;
+        zip.add_symlink("link.txt", "real.txt", options)?;
+        zip.finish()?;
+
+        let out = tempfile::tempdir()?;
+        extract_zip(BufReader::new(File::open(&zip_path)?), out.path())?;
+
+        assert!(fs::symlink_metadata(out.path().join("link.txt"))?.is_symlink());
+        // Following the link must read through to the real file.
+        assert_eq!(fs::read(out.path().join("link.txt"))?, b"content");
         Ok(())
     }
 }

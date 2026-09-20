@@ -46,6 +46,11 @@ pub async fn download(
             .asset
             .as_ref()
             .ok_or_else(|| anyhow!("no asset selected for `{}`", repo.name))?;
+        // Print the whole batch list before any progress bar exists: bars
+        // render on stderr, and log lines emitted while they are up garble
+        // their redraw. These lines also stay as the only per-package
+        // feedback in --quiet mode, where the bars are hidden — so info!,
+        // not debug!.
         info!("Downloading `{}` from {url_str}", repo.name);
 
         let url = Url::parse(url_str).map_err(|e| anyhow!("invalid asset URL '{url_str}': {e}"))?;

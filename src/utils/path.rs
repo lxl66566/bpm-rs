@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::{Result, anyhow};
 use walkdir::WalkDir;
 
 use crate::installation::unzip::TAR_EXTENSIONS;
@@ -30,25 +31,27 @@ pub trait PathExt {
 
 impl<P: AsRef<Path>> PathExt for P {
     fn glob_name(&self, pattern: &str) -> Vec<PathBuf> {
-        // 使用 walkdir 库，避免手写递归导致栈溢出，且过滤更优雅
+        // Use walkdir instead of hand-rolled recursion (stack-overflow safe,
+        // cleaner filtering).
         WalkDir::new(self)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file()) // 只保留文件
-            .filter(|e| e.file_name() == pattern) // 匹配文件名
+            .filter(|e| e.file_type().is_file()) // keep files only
+            .filter(|e| e.file_name() == pattern) // match by file name
             .map(|e| e.path().to_path_buf())
             .collect()
     }
 
     fn create_dir_if_not_exist(&self) -> Result<(), std::io::Error> {
-        // fs::create_dir_all 本身如果遇到目录已存在，就不会报错，无需手动 match 拦截
+        // fs::create_dir_all is already a no-op when the dir exists, so no
+        // manual existence check is needed.
         fs::create_dir_all(self)
     }
 
     fn remove_all_allow_missing(&self) -> Result<(), std::io::Error> {
         let path = self.as_ref();
 
-        // 优先判断是否是目录（如果不存在会返回 false）
+        // Check the dir case first (is_dir returns false when missing).
         if path.is_dir() {
             match fs::remove_dir_all(path) {
                 Ok(()) => Ok(()),
@@ -56,7 +59,7 @@ impl<P: AsRef<Path>> PathExt for P {
                 Err(e) => Err(e),
             }
         } else {
-            // 是文件或者路径压根不存在
+            // A file, or a path that does not exist at all.
             match fs::remove_file(path) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -66,54 +69,73 @@ impl<P: AsRef<Path>> PathExt for P {
     }
 }
 
+/// Extract the drive letter and the `/`-joined relative part of a path.
+///
+/// Returns `None` when the path has no disk prefix (UNC/network or relative
+/// paths); callers turn that into an error instead of a panic, since a domain
+/// home dir can legitimately be a UNC path.
 #[cfg(windows)]
-fn extract_windows_drive_and_relative(path: &Path) -> (char, String) {
+fn extract_windows_drive_and_relative(path: &Path) -> Option<(char, String)> {
     let mut components = path.components();
 
-    // 提取盘符
-    let drive = match components.next() {
-        Some(Component::Prefix(prefix)) => match prefix.kind() {
+    // Extract the drive letter.
+    let drive = match components.next()? {
+        Component::Prefix(prefix) => match prefix.kind() {
             Prefix::Disk(d) | Prefix::VerbatimDisk(d) => (d as char).to_ascii_lowercase(),
-            _ => panic!("Path must start with a disk drive (e.g., C:)"),
+            // UNC and device prefixes have no drive letter.
+            _ => return None,
         },
-        _ => panic!("Path must be an absolute Windows path"),
+        _ => return None,
     };
 
-    // 收集剩余路径（自动处理掉 RootDir 即 "C:\" 中的 "\"）
+    // Collect the rest (the RootDir component of `C:\` is filtered out).
     let relative: Vec<String> = components
         .filter(|c| !matches!(c, Component::RootDir))
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
 
-    (drive, relative.join("/"))
+    Some((drive, relative.join("/")))
 }
 
-/// convert a windows path to posix path string.
-///
-/// # Panics
-/// Panics if `p` is not a valid absolute windows path.
 #[cfg(windows)]
-pub fn windows_path_to_windows_bash<P: AsRef<Path>>(p: P) -> String {
-    let (drive, relative) = extract_windows_drive_and_relative(p.as_ref());
+fn not_local_disk_error(p: &Path) -> anyhow::Error {
+    anyhow!(
+        "`{}` is not an absolute local-disk path (e.g. `C:\\...`); UNC/network paths are not \
+         supported",
+        p.display()
+    )
+}
+
+/// Build the posix path with the given mount prefix (`""` for git-bash,
+/// `"/mnt"` for WSL).
+#[cfg(windows)]
+fn windows_path_to_posix(p: &Path, mount_prefix: &str) -> Result<String> {
+    let (drive, relative) =
+        extract_windows_drive_and_relative(p).ok_or_else(|| not_local_disk_error(p))?;
     if relative.is_empty() {
-        format!("/{drive}")
+        Ok(format!("{mount_prefix}/{drive}"))
     } else {
-        format!("/{drive}/{relative}")
+        Ok(format!("{mount_prefix}/{drive}/{relative}"))
     }
 }
 
-/// convert a windows path to wsl path string.
+/// Convert a windows path to a git-bash style posix path string
+/// (e.g. `C:\foo` -> `/c/foo`).
 ///
-/// # Panics
-/// Panics if `p` is not a valid absolute windows path.
+/// # Errors
+/// Errors if `p` is not an absolute local-disk windows path.
 #[cfg(windows)]
-pub fn windows_path_to_wsl<P: AsRef<Path>>(p: P) -> String {
-    let (drive, relative) = extract_windows_drive_and_relative(p.as_ref());
-    if relative.is_empty() {
-        format!("/mnt/{drive}")
-    } else {
-        format!("/mnt/{drive}/{relative}")
-    }
+pub fn windows_path_to_windows_bash<P: AsRef<Path>>(p: P) -> Result<String> {
+    windows_path_to_posix(p.as_ref(), "")
+}
+
+/// Convert a windows path to a wsl path string (e.g. `C:\foo` -> `/mnt/c/foo`).
+///
+/// # Errors
+/// Errors if `p` is not an absolute local-disk windows path.
+#[cfg(windows)]
+pub fn windows_path_to_wsl<P: AsRef<Path>>(p: P) -> Result<String> {
+    windows_path_to_posix(p.as_ref(), "/mnt")
 }
 
 pub trait FileNameExt {
@@ -164,13 +186,13 @@ mod tests {
         fs::write(&file3, "3").unwrap();
 
         let mut results = base.glob_name("target.txt");
-        results.sort(); // 排序以确保断言稳定
+        results.sort(); // sorted for stable assertions
 
         assert_eq!(results.len(), 2);
         assert!(results.contains(&file1));
         assert!(results.contains(&file2));
 
-        // 测试找不到的情况
+        // No match.
         assert_eq!(base.glob_name("non_existent.txt"), [] as [PathBuf; 0]);
     }
 
@@ -179,18 +201,17 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
         let path = tempdir.path().join("new_dir");
 
-        // 第一次创建
+        // First creation.
         path.create_dir_if_not_exist().unwrap();
         assert!(path.exists() && path.is_dir());
 
-        // 幂等性测试（重复调用不报错）
+        // Idempotent: repeated calls must not error.
         path.create_dir_if_not_exist().unwrap();
 
-        // 测试路径上存在一个【同名文件】导致的错误
+        // A same-named FILE on the path must error (it is not a dir).
         let file_path = tempdir.path().join("conflict_file");
         fs::write(&file_path, "test").unwrap();
-        let result = file_path.create_dir_if_not_exist();
-        assert!(result.is_err()); // 应该返回 OS Error，因为那是文件不是目录
+        assert!(file_path.create_dir_if_not_exist().is_err());
     }
 
     #[test]
@@ -198,23 +219,23 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
         let base = tempdir.path();
 
-        // 1. 测试删除目录
+        // 1. Remove a directory.
         let dir_path = base.join("dir_to_remove");
         fs::create_dir_all(&dir_path).unwrap();
         dir_path.remove_all_allow_missing().unwrap();
         assert!(!dir_path.exists());
 
-        // 2. 测试删除文件
+        // 2. Remove a file.
         let file_path = base.join("file_to_remove.txt");
         fs::write(&file_path, "test").unwrap();
         file_path.remove_all_allow_missing().unwrap();
         assert!(!file_path.exists());
 
-        // 3. 测试删除不存在的路径（不应报错）
+        // 3. Remove a missing path (must not error).
         let missing_path = base.join("not_exist");
         assert!(missing_path.remove_all_allow_missing().is_ok());
 
-        // 4. 测试重复删除（不应报错）
+        // 4. Remove twice (must not error).
         assert!(dir_path.remove_all_allow_missing().is_ok());
     }
 
@@ -242,19 +263,45 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn test_windows_paths_conversion() {
-        // 测试常规路径
+        // Regular paths.
         let path1 = "C:\\Users\\lxl\\bpm\\bin";
-        assert_eq!(windows_path_to_windows_bash(path1), "/c/Users/lxl/bpm/bin");
-        assert_eq!(windows_path_to_wsl(path1), "/mnt/c/Users/lxl/bpm/bin");
+        assert_eq!(
+            windows_path_to_windows_bash(path1).unwrap(),
+            "/c/Users/lxl/bpm/bin"
+        );
+        assert_eq!(
+            windows_path_to_wsl(path1).unwrap(),
+            "/mnt/c/Users/lxl/bpm/bin"
+        );
 
-        // 测试包含斜杠的混合路径
+        // Mixed separators.
         let path2 = "D:/projects\\test";
-        assert_eq!(windows_path_to_windows_bash(path2), "/d/projects/test");
-        assert_eq!(windows_path_to_wsl(path2), "/mnt/d/projects/test");
+        assert_eq!(
+            windows_path_to_windows_bash(path2).unwrap(),
+            "/d/projects/test"
+        );
+        assert_eq!(windows_path_to_wsl(path2).unwrap(), "/mnt/d/projects/test");
 
-        // 测试只有盘符的情况
+        // Drive letter only.
         let path3 = "E:\\";
-        assert_eq!(windows_path_to_windows_bash(path3), "/e");
-        assert_eq!(windows_path_to_wsl(path3), "/mnt/e");
+        assert_eq!(windows_path_to_windows_bash(path3).unwrap(), "/e");
+        assert_eq!(windows_path_to_wsl(path3).unwrap(), "/mnt/e");
+
+        // UNC/network (a domain home dir can be one) and relative paths have
+        // no drive letter: an understandable error instead of the old panic.
+        for bad in [
+            r"\\server\share\bin",
+            r"\\?\UNC\server\share",
+            "relative\\path",
+        ] {
+            assert!(
+                windows_path_to_windows_bash(bad)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("UNC/network"),
+                "{bad}"
+            );
+            assert!(windows_path_to_wsl(bad).is_err(), "{bad}");
+        }
     }
 }

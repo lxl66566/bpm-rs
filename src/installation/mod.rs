@@ -40,15 +40,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dir_path = dir.path();
 
-        // 1. 空文件夹：应返回 None
+        // 1. Empty dir: None.
         assert_eq!(only_one_file_in_dir(dir_path).unwrap(), None);
 
-        // 2. 只有一个文件：应返回 Some(path)
+        // 2. Exactly one file: Some(path).
         let file1 = dir_path.join("file1.txt");
         fs::write(&file1, "dummy data").unwrap();
         assert_eq!(only_one_file_in_dir(dir_path).unwrap(), Some(file1.clone()));
 
-        // 3. 有两个文件：应返回 None
+        // 3. Two files: None.
         let file2 = dir_path.join("file2.txt");
         fs::write(&file2, "dummy data").unwrap();
         assert_eq!(only_one_file_in_dir(dir_path).unwrap(), None);

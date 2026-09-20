@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use super::Installation;
 use crate::{context::Context, storage::Repo, utils::path::PathExt};
 
-// 文件移动直接使用 fs_extra 库，支持跨磁盘 (Cross-Device) 移动。
+// File moves go through fs_extra, which supports cross-device moves.
 fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
         info!(
@@ -24,10 +24,10 @@ fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()>
 
     dst_dir.create_dir_if_not_exist()?;
     let mut options = fs_extra::dir::CopyOptions::new();
-    options.content_only = true; // 只移动内容，不包含外层文件夹本身
+    options.content_only = true; // move contents only, not the outer folder itself
     options.overwrite = true;
 
-    // move_dir 会自动处理同磁盘 rename 和跨磁盘 copy+delete
+    // move_dir handles same-device rename and cross-device copy+delete.
     fs_extra::dir::move_dir(src_dir, dst_dir, &options)?;
     info!(
         "Moved contents: `{:?}` -> `{:?}`",
@@ -157,7 +157,8 @@ impl Installation for Repo {
 
         let app_dir = ctx.app_path().join(&self.name);
 
-        // 直接移动文件夹，不再记录每一个内部文件。
+        // Move the directory as a whole; individual files inside are not
+        // tracked.
         self.add_installed_file(&app_dir, || move_dir_content(src, &app_dir, ctx.dry_run))?;
 
         self.create_binary_links(src, ctx)?;
@@ -216,7 +217,7 @@ impl WindowsBinaryLinks for Repo {
 
         let mut bin_files = scan_root.glob_name(&self.bin_name);
         if bin_files.is_empty() {
-            // 兜底：扫描所有 .exe 文件
+            // Fallback: scan for any .exe file.
             bin_files = WalkDir::new(scan_root)
                 .into_iter()
                 .filter_map(std::result::Result::ok)
@@ -272,13 +273,13 @@ impl WindowsBinaryLinks for Repo {
                 })?;
 
                 self.add_installed_file(&sh_path, || {
+                    let bash_path = windows_path_to_windows_bash(bin_file)?;
+                    let wsl_path = windows_path_to_wsl(bin_file)?;
                     fs::write(
                         &sh_path,
                         format!(
-                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \"{}\" \
-                             \"$@\"\nelse\n    \"{}\" \"$@\"\nfi",
-                            windows_path_to_windows_bash(bin_file),
-                            windows_path_to_wsl(bin_file)
+                            "#!/bin/sh\nif [ \"$(uname)\" != \"Linux\" ]; then\n    \
+                             \"{bash_path}\" \"$@\"\nelse\n    \"{wsl_path}\" \"$@\"\nfi"
                         ),
                     )?;
                     debug!(
@@ -351,7 +352,7 @@ mod tests {
         let src_dir = tempfile::tempdir().unwrap();
         let dst_dir = tempfile::tempdir().unwrap();
 
-        // 构造源目录结构：
+        // Source directory layout:
         // src/
         //  ├─ a.txt
         //  └─ sub/

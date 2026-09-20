@@ -169,7 +169,7 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
     // Phase 4: Batch download (trauma handles internal parallelism)
     let download_tmp = tempfile::tempdir()?;
     let repo_refs: Vec<&Repo> = repos.iter().collect();
-    let downloaded = download::download(repo_refs, download_tmp.path()).await?;
+    let downloaded = download::download(repo_refs, download_tmp.path(), ctx.quiet).await?;
     ensure!(!downloaded.is_empty(), "No files downloaded.");
 
     // Phase 5: Unzip and install each repo (two-phase: install all, then commit DB)
@@ -288,7 +288,7 @@ pub async fn install_single(
             )?
         }
     } else {
-        let downloaded = download::download(vec![&*repo], tmp_path).await?;
+        let downloaded = download::download(vec![&*repo], tmp_path, ctx.quiet).await?;
         ensure!(
             !downloaded.is_empty(),
             "No files downloaded for {}",

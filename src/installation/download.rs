@@ -10,7 +10,31 @@ use url::Url;
 
 use crate::{storage::Repo, utils::FileNameExt};
 
-pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(String, PathBuf)>> {
+/// Progress bar style: one bar per asset, no total bar.
+/// `--quiet` promises "Suppress progress output", so hide the bars entirely.
+fn style_options(quiet: bool) -> StyleOptions {
+    if quiet {
+        StyleOptions::hidden()
+    } else {
+        StyleOptions::builder()
+            .child(
+                ProgressBarOpts::builder()
+                    .template(
+                        "{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] \
+                         {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                    )
+                    .progress_chars(ProgressBarOpts::CHARS_LINE)
+                    .build(),
+            )
+            .build()
+    }
+}
+
+pub async fn download(
+    repos: Vec<&Repo>,
+    to: impl Into<PathBuf>,
+    quiet: bool,
+) -> Result<Vec<(String, PathBuf)>> {
     let to = to.into();
     let mut ret = vec![];
     let mut assets = vec![];
@@ -46,18 +70,8 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
         assets.push(download);
     }
 
-    // 2. 定义进度条样式（每个 asset 一个进度条，无总体进度条）
-    let style = StyleOptions::builder()
-        .child(
-            ProgressBarOpts::builder()
-                .template(
-                    "{msg:<20.cyan} [{elapsed_precise}] [{wide_bar:.green/blue}] \
-                     {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
-                )
-                .progress_chars(ProgressBarOpts::CHARS_LINE)
-                .build(),
-        )
-        .build();
+    // 2. Progress bar style (see [`style_options`]).
+    let style = style_options(quiet);
 
     let downloader = Downloader::builder()
         .directory(&to)
@@ -93,6 +107,12 @@ pub async fn download(repos: Vec<&Repo>, to: impl Into<PathBuf>) -> Result<Vec<(
 mod tests {
     use super::*;
 
+    #[test]
+    fn quiet_hides_progress_bars() {
+        assert!(style_options(true).is_hidden());
+        assert!(!style_options(false).is_hidden());
+    }
+
     #[tokio::test]
     #[ignore = "requires network access to GitHub"]
     async fn test_download() {
@@ -100,7 +120,7 @@ mod tests {
         let mut repo = Repo::new("download_test");
         repo.asset =
             Some("https://github.com/seanmonstar/reqwest/archive/refs/tags/v0.1.0.zip".to_string());
-        let result = download(vec![&repo], tempdir.path()).await;
+        let result = download(vec![&repo], tempdir.path(), false).await;
         if let Ok(paths) = result {
             assert!(paths.iter().any(|(_, p)| p.exists()));
         }

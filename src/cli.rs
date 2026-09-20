@@ -123,7 +123,7 @@ pub enum SubCommand {
         outdated: bool,
     },
 
-    /// Verify installed package integrity
+    /// Check that installed package files exist
     #[clap(visible_alias("check"))]
     Doctor,
 }

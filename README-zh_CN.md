@@ -57,17 +57,6 @@ bpm doctor              # 校验已安装文件
 bpm -h                  # 查看更多帮助
 ```
 
-## 配置
-
-可选配置文件位于 `~/.config/bpm/config.toml`：
-
-```toml
-# install_position = "D:/bpm"      # app/bin 根目录（db 随之移动）
-# db_path = "D:/bpm/db.json"       # 单独指定 db 位置
-# prefix = "/usr/local"            # unix 安装前缀（--prefix 优先）
-# github_token = "ghp_xxx"         # 提升 API 速率限制；GITHUB_TOKEN/GH_TOKEN 环境变量优先
-```
-
 ## 原理解释
 
 - **选择 asset**：bpm 基于平台/架构/libc 关键词自动匹配最佳 asset；可用 `--interactive` 手动选择。

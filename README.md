@@ -57,17 +57,6 @@ bpm doctor              # verify installed files
 bpm -h                  # show more help
 ```
 
-## Configuration
-
-Optional config file at `~/.config/bpm/config.toml`:
-
-```toml
-# install_position = "D:/bpm"      # root for app/bin (db moves with it)
-# db_path = "D:/bpm/db.json"       # explicit db location
-# prefix = "/usr/local"            # unix install prefix (--prefix wins)
-# github_token = "ghp_xxx"         # higher API rate limit; GITHUB_TOKEN/GH_TOKEN env wins
-```
-
 ## How it works
 
 - **Asset selection**: bpm matches platform/arch/libc keywords to pick the best asset automatically; use `--interactive` to choose manually.

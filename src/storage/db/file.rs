@@ -26,6 +26,26 @@ fn lock_registry() -> &'static Mutex<HashMap<PathBuf, usize>> {
     LOCK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Canonical registry key for a db path. The same db opened through
+/// different spellings (relative vs absolute, `..`, mixed separators) must
+/// map to a single entry, otherwise the second handle is misreported as
+/// "another bpm instance may be running".
+fn lock_key(db_path: &Path) -> PathBuf {
+    if let Ok(canonical) = db_path.canonicalize() {
+        return canonical;
+    }
+    // The db file may not exist yet (first run); canonicalizing the parent
+    // directory still normalizes the path around it.
+    let name = db_path.file_name().unwrap_or_default();
+    let parent = db_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    parent
+        .canonicalize()
+        .map_or_else(|_| db_path.to_path_buf(), |p| p.join(name))
+}
+
 /// RAII guard: attach to (or create) the process-wide hold on a db lock.
 #[derive(Debug)]
 struct ProcessLock {
@@ -36,12 +56,13 @@ struct ProcessLock {
 
 impl ProcessLock {
     fn acquire(db_path: &Path) -> Result<Self> {
+        let key = lock_key(db_path);
         let mut registry = lock_registry().lock().unwrap();
-        if let Some(count) = registry.get_mut(db_path) {
+        if let Some(count) = registry.get_mut(&key) {
             // Re-entrant within this process; the OS lock is already held.
             *count += 1;
             return Ok(Self {
-                path: db_path.to_path_buf(),
+                path: key,
                 file: None,
             });
         }
@@ -62,9 +83,9 @@ impl ProcessLock {
                 lock_path.display()
             )
         })?;
-        registry.insert(db_path.to_path_buf(), 1);
+        registry.insert(key.clone(), 1);
         Ok(Self {
-            path: db_path.to_path_buf(),
+            path: key,
             file: Some(file),
         })
     }
@@ -81,6 +102,9 @@ impl Drop for ProcessLock {
                 registry.remove(&self.path);
                 // Dropping the file handle releases the OS lock.
                 self.file = None;
+                // Best-effort cleanup of the stale lock file; failure is
+                // harmless (e.g. another process already re-created it).
+                let _ = fs::remove_file(Db::lock_path(&self.path));
             }
         }
     }
@@ -259,6 +283,34 @@ mod tests {
         drop(db1);
         drop(db2);
         assert!(Db::create_or_open(&path).is_ok());
+    }
+
+    /// The lock registry keys by canonical path: the same db opened through
+    /// a different spelling must be re-entrant, not reported as "another
+    /// bpm instance may be running".
+    #[test]
+    fn db_lock_key_is_canonical_across_spellings() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+        let p1 = dir.path().join("test.ron");
+        let p2 = dir.path().join("sub").join("..").join("test.ron");
+        let db1 = Db::create_or_open(&p1).unwrap();
+        let db2 = Db::create_or_open(&p2).unwrap();
+        drop(db1);
+        drop(db2);
+    }
+
+    /// The lock file is removed once the last in-process handle drops,
+    /// instead of lingering in the data directory forever.
+    #[test]
+    fn db_lock_file_removed_after_last_handle() {
+        let (_dir, path) = temp_db_path();
+        {
+            let db = Db::create_or_open(&path).unwrap();
+            assert!(Db::lock_path(&path).exists());
+            drop(db);
+        }
+        assert!(!Db::lock_path(&path).exists());
     }
 
     /// Regression test: `insert_repo` must upsert (overwrite by name) instead

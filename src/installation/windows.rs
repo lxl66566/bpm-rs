@@ -141,7 +141,7 @@ impl Installation for Repo {
         // 直接移动文件夹，不再记录每一个内部文件。
         self.add_installed_file(&app_dir, || move_dir_content(src, &app_dir, ctx.dry_run))?;
 
-        self.create_binary_links(ctx)?;
+        self.create_binary_links(src, ctx)?;
         Ok(())
     }
 
@@ -172,11 +172,11 @@ impl Installation for Repo {
 }
 
 trait WindowsBinaryLinks {
-    fn create_binary_links(&mut self, ctx: &Context) -> Result<()>;
+    fn create_binary_links(&mut self, src: &Path, ctx: &Context) -> Result<()>;
 }
 
 impl WindowsBinaryLinks for Repo {
-    fn create_binary_links(&mut self, ctx: &Context) -> Result<()> {
+    fn create_binary_links(&mut self, src: &Path, ctx: &Context) -> Result<()> {
         use path_absolutize::Absolutize;
 
         use crate::utils::path::{windows_path_to_windows_bash, windows_path_to_wsl};
@@ -185,12 +185,20 @@ impl WindowsBinaryLinks for Repo {
 
         let app_dir = ctx.app_path().join(&self.name);
         let bin_path = ctx.bin_path();
-        bin_path.create_dir_if_not_exist()?;
 
-        let mut bin_files = app_dir.glob_name(&self.bin_name);
+        // Dry-run leaves app_dir unpopulated (the move is skipped), so scan
+        // the extract source instead; scanning app_dir would always produce a
+        // misleading "no binary file found" warning.
+        let scan_root: &Path = if ctx.dry_run {
+            src
+        } else {
+            &app_dir
+        };
+
+        let mut bin_files = scan_root.glob_name(&self.bin_name);
         if bin_files.is_empty() {
             // 兜底：扫描所有 .exe 文件
-            bin_files = WalkDir::new(&app_dir)
+            bin_files = WalkDir::new(scan_root)
                 .into_iter()
                 .filter_map(std::result::Result::ok)
                 .filter(|e| e.file_type().is_file())
@@ -205,12 +213,16 @@ impl WindowsBinaryLinks for Repo {
         if bin_files.is_empty() {
             warn!(
                 "no binary file found in `{:?}`, skip creating links.",
-                app_dir.display()
+                scan_root.display()
             );
             return Ok(());
         }
 
         if !ctx.dry_run {
+            // Both are real side effects (a created directory and a
+            // persistent user-PATH modification) and must never run on
+            // dry-run.
+            bin_path.create_dir_if_not_exist()?;
             let base_shim = ensure_base_shim(ctx)?;
 
             for bin_file in &bin_files {
@@ -258,9 +270,9 @@ impl WindowsBinaryLinks for Repo {
                     Ok(())
                 })?;
             }
-        }
 
-        ensure_windows_path(&bin_path);
+            ensure_windows_path(&bin_path);
+        }
         Ok(())
     }
 }

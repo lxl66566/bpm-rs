@@ -12,8 +12,11 @@ categories  = ["command-line-utilities"]
 exclude     = ["AGENTS.md", "architecture-select"]
 
 [[bin]]
-name = "bpm"
-path = "src/main.rs"
+name              = "bpm"
+path              = "src/main.rs"
+# src/log.rs needs the optional flexi_logger; skip the bin when the
+# feature is off (e.g. --no-default-features library-only builds).
+required-features = ["bin"]
 
 [dependencies]
 anyhow              = "1"
@@ -24,7 +27,7 @@ brotli              = "8"
 bzip2               = "0.6"
 bzip3               = { version = "0.12", features = ["bundled"] }
 clap                = { version = "4.6", features = ["derive"] }
-colored             = "3"
+colored             = { version = "3", optional = true }
 comfy-table         = "8"
 config-file2        = { version = "0.7", features = ["all"] }
 dialoguer           = { version = "0.12", features = ["fuzzy-select"] }
@@ -62,7 +65,8 @@ windows-env = "0.3.0"
 
 [features]
 default = ["bin"]
-bin     = ["flexi_logger"]
+# Feature gating the [[bin]] target: src/log.rs needs flexi_logger + colored.
+bin     = ["flexi_logger", "colored"]
 
 [lints.clippy]
 all                     = { level = "warn", priority = -1 }

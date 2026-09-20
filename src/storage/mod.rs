@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use log::debug;
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
@@ -28,7 +28,12 @@ fn split_full_name(full_name: &str) -> Result<(String, String)> {
             .ok_or_else(|| anyhow!("2nd part of full name is empty"))?
             .to_string(),
     );
-    debug_assert!(iter.count() == 0, "fullname has more than 2 parts");
+    // Reachable from user input (a pasted URL with a subpath); must be an
+    // error, not a debug_assert panic / silent release-build truncation.
+    ensure!(
+        iter.next().is_none(),
+        "full name `{full_name}` has more than 2 parts"
+    );
     Ok(res)
 }
 
@@ -271,12 +276,14 @@ impl Repo {
 impl From<Url> for Repo {
     #[inline]
     fn from(value: Url) -> Self {
-        if let Ok((owner, name)) = split_full_name(value.path()) {
-            let mut repo = Self::new(name.clone());
-            repo.repo_name = Some(name);
-            repo.repo_owner = Some(owner);
-            repo
-        } else {
+        // A repo URL path is `/{owner}/{repo}`; deeper segments
+        // (e.g. `/tree/main`) are repo subpages, not part of the name.
+        // Infallible conversion, so unlike `set_by_url` we tolerate them
+        // instead of erroring.
+        let mut segments = value.path().trim_matches('/').split('/');
+        let owner = segments.next().unwrap_or_default();
+        let name = segments.next().unwrap_or_default();
+        if owner.is_empty() || name.is_empty() {
             // Fallback: use the last non-empty path segment as name
             let name = value
                 .path_segments()
@@ -284,6 +291,11 @@ impl From<Url> for Repo {
                 .filter(|n| !n.is_empty())
                 .unwrap_or("unknown");
             Self::new(name)
+        } else {
+            let mut repo = Self::new(name);
+            repo.repo_name = Some(name.to_string());
+            repo.repo_owner = Some(owner.to_string());
+            repo
         }
     }
 }
@@ -430,6 +442,22 @@ mod tests {
         );
         assert_eq!(repo.repo_name.unwrap(), "bpm-rs");
         assert_eq!(repo.repo_owner.unwrap(), "lxl66566");
+    }
+
+    #[test]
+    fn test_subpath_urls() {
+        // set_by_url must propagate an error for malformed paths instead of
+        // panicking (debug) or silently truncating (release).
+        assert!(
+            Repo::new("x")
+                .by_url("https://github.com/owner/repo/tree/main")
+                .is_err()
+        );
+        // The infallible From<&str> keeps resolving owner/repo: a pasted
+        // subpage URL still names the right repo.
+        let repo = Repo::from("https://github.com/owner/repo/tree/main");
+        assert_eq!(repo.name, "repo");
+        assert_eq!(repo.repo_owner.as_deref(), Some("owner"));
     }
 
     #[test]

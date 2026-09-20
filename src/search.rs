@@ -146,6 +146,25 @@ impl Repo {
             bail!("repo_name not set");
         };
 
+        // Fast path for the stable case: /releases/latest is a single-item
+        // endpoint that already excludes prereleases (and drafts), much
+        // cheaper than pulling the release list (per_page=100) just to find
+        // the newest stable one. It 404s — or yields an empty tag — when the
+        // repo has no stable release; fall back to the list scan then.
+        // `allow_pre` keeps the list scan: the endpoint never returns
+        // prereleases.
+        if !self.allow_pre {
+            let api = self
+                .site
+                .api_base()
+                .join_all_str(["repos", owner, name, "releases", "latest"])?;
+            if let Some(raw) = fetch_latest_stable(api).await?
+                && !raw.tag_name.is_empty()
+            {
+                return from_github_release(raw);
+            }
+        }
+
         let per_page = if self.allow_pre {
             "1"
         } else {
@@ -264,6 +283,25 @@ impl Repo {
             ))
         }
     }
+}
+
+/// Fetch the latest stable release via the single-item `releases/latest`
+/// endpoint. `Ok(None)` means the endpoint answered 404 — the repo has no
+/// non-prerelease release — and the caller should fall back to scanning the
+/// release list.
+async fn fetch_latest_stable(api: Url) -> Result<Option<GithubRelease>> {
+    debug!("Fetch latest release from API: {api}");
+    let resp = send_with_retry(|| REQUEST_CLIENT.get(api.clone())).await?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let release = resp
+        .error_for_status()
+        .with_context(|| format!("GitHub latest-release API: {api}"))?
+        .json()
+        .await
+        .with_context(|| format!("GitHub latest-release API: {api}"))?;
+    Ok(Some(release))
 }
 
 /// Convert a typed GitHub release into the platform-agnostic [`Release`].

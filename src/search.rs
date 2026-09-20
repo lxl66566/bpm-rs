@@ -193,20 +193,21 @@ impl Repo {
 
         let selected = architecture_select::select(filtered);
 
-        // Sort preferred libc variant to the front
+        // Sort preferred libc variant to the front (best-first)
         let preferred_kw = self.libc_pref.keyword();
-        let mut selected = architecture_select::sort_list(
+        let selected = architecture_select::sort_list(
             selected,
             &[(preferred_kw, architecture_select::MatchPos::All)],
             architecture_select::Combination::Any,
             false,
-            false,
+            architecture_select::MatchOrder::MatchedFirst,
         );
 
-        // Sort natively supported archive formats to the front, unsupported
-        // formats (e.g. .deb, .rpm, .dmg, .AppImage) to the back so we pick
-        // something bpm can actually extract.
-        let supported_exts = [
+        // Sort natively supported formats to the front, unsupported formats
+        // (e.g. .deb, .rpm, .dmg, .AppImage) to the back so we pick something
+        // bpm can actually extract. On Windows a raw .exe/.msi is directly
+        // installable and counts as supported too.
+        let mut supported_exts = vec![
             (".tar.gz", architecture_select::MatchPos::End),
             (".tar.xz", architecture_select::MatchPos::End),
             (".tar.zst", architecture_select::MatchPos::End),
@@ -218,18 +219,24 @@ impl Repo {
             (".zst", architecture_select::MatchPos::End),
             (".xz", architecture_select::MatchPos::End),
         ];
-        selected = architecture_select::sort_list(
+        if cfg!(windows) {
+            supported_exts.insert(0, (".msi", architecture_select::MatchPos::End));
+            supported_exts.insert(0, (".exe", architecture_select::MatchPos::End));
+        }
+        let selected = architecture_select::sort_list(
             selected,
             &supported_exts,
             architecture_select::Combination::Any,
             false,
-            false,
+            architecture_select::MatchOrder::MatchedFirst,
         );
 
         if interactive && selected.len() > 1 {
             ask_asset_interactive(&selected)
         } else {
-            selected.pop().context(format!(
+            // Every sort above is best-first: take the first, not the last.
+            // (Taking the last once picked .pdb over .exe — review P0-1.)
+            selected.into_iter().next().context(format!(
                 "No valid asset found for '{}'. Try --interactive.",
                 self.name
             ))

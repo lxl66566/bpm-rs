@@ -30,16 +30,6 @@ fn architecture_markers_for(arch: &'static str) -> Vec<&'static str> {
     }
 }
 
-#[inline]
-fn platform_markers() -> Vec<&'static str> {
-    platform_markers_for(std::env::consts::OS)
-}
-
-#[inline]
-fn architecture_markers() -> Vec<&'static str> {
-    architecture_markers_for(std::env::consts::ARCH)
-}
-
 fn platform_markers_with_pos_for(os: &'static str) -> Vec<(&'static str, MatchPos)> {
     let mut origin: Vec<_> = platform_markers_for(os)
         .into_iter()
@@ -112,6 +102,17 @@ impl MatchPos {
     }
 }
 
+/// Placement of matched items in [`sort_list`] output. Makes "best-first" an
+/// explicit, compile-time contract instead of a boolean reversal flag.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+pub enum MatchOrder {
+    /// Matched items first: the result is best-first.
+    #[default]
+    MatchedFirst,
+    /// Matched items last.
+    MatchedLast,
+}
+
 fn match_inner(
     item: &str,
     prompts_with_match_pos: &[(&str, MatchPos)],
@@ -159,34 +160,43 @@ pub fn select_list<S: AsRef<str>>(
         .collect()
 }
 
-/// Sort items so that matching items come first (or last if `reverse`).
+/// Sort items so that matched items come first (or last, per `order`).
+///
+/// The sort is stable and never reverses the whole list: the relative order
+/// inside the matched/unmatched groups is preserved.
 ///
 /// # Arguments
 /// * `combination` - All: every prompt must match. Any: at least one matches.
 /// * `case_sensitive` - true: exact case. false: case-insensitive.
-/// * `reverse` - true: matching items go to the end.
+/// * `order` - where matched items are placed.
 pub fn sort_list<S: AsRef<str>>(
     mut sort_list: Vec<S>,
     prompts_with_match_pos: &[(&str, MatchPos)],
     combination: Combination,
     case_sensitive: bool,
-    reverse: bool,
+    order: MatchOrder,
 ) -> Vec<S> {
     sort_list.sort_by_key(|item| {
-        !match_inner(
+        let matched = match_inner(
             item.as_ref(),
             prompts_with_match_pos,
             combination,
             case_sensitive,
-        )
+        );
+        match order {
+            MatchOrder::MatchedFirst => !matched,
+            MatchOrder::MatchedLast => matched,
+        }
     });
-    if reverse {
-        sort_list.reverse();
-    }
     sort_list
 }
 
-/// Select the best match item from assets based on current platform and architecture.
+/// Select the best match item from assets based on current platform and
+/// architecture.
+///
+/// Returns a **best-first** list: non-matching assets are dropped (hard
+/// filter), and known-useless suffixes (`.pdb`, `.dll`, checksums, ...) are
+/// sorted to the end. Non-interactive callers must take the first element.
 pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
     // Select platform (case-insensitive)
     let assets = select_list(
@@ -212,7 +222,7 @@ pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
             .as_ref(),
         Combination::Any,
         false,
-        true,
+        MatchOrder::MatchedLast,
     )
 }
 
@@ -384,13 +394,23 @@ mod tests {
     fn test_sort_list() {
         let assets = ["foo", "bar", "baz"].map(ToOwned::to_owned).to_vec();
         let sorted = sort_list(
+            assets.clone(),
+            &[("a", MatchPos::All)],
+            Combination::Any,
+            false,
+            MatchOrder::MatchedFirst,
+        );
+        assert_eq!(sorted, ["bar", "baz", "foo"]);
+        // MatchedLast must not reverse the whole list: within-group order is
+        // preserved (this full-reversal is what caused the worst-first pick).
+        let sorted = sort_list(
             assets,
             &[("a", MatchPos::All)],
             Combination::Any,
             false,
-            false,
+            MatchOrder::MatchedLast,
         );
-        assert_eq!(sorted, ["bar", "baz", "foo"]);
+        assert_eq!(sorted, ["foo", "bar", "baz"]);
     }
 
     #[test]
@@ -418,8 +438,25 @@ mod tests {
 
         let selected_assets = select(assets.clone());
         assert!(!selected_assets.is_empty());
+        // select() is best-first: the first element must be the pick.
         if cfg!(windows) {
-            assert_eq!(selected_assets[0], "typstyle-win32-x64.exe");
+            if cfg!(target_arch = "aarch64") {
+                assert_eq!(selected_assets[0], "typstyle-win32-arm64.exe");
+            } else {
+                assert_eq!(selected_assets[0], "typstyle-win32-x64.exe");
+            }
+        } else if cfg!(target_os = "linux") {
+            if cfg!(target_arch = "aarch64") {
+                assert_eq!(selected_assets[0], "typstyle-linux-arm64");
+            } else {
+                assert_eq!(selected_assets[0], "typstyle-linux-x64");
+            }
+        } else if cfg!(target_os = "macos") {
+            if cfg!(target_arch = "aarch64") {
+                assert_eq!(selected_assets[0], "typstyle-darwin-arm64");
+            } else {
+                assert_eq!(selected_assets[0], "typstyle-darwin-x64");
+            }
         }
     }
 

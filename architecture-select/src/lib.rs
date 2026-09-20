@@ -217,7 +217,7 @@ pub fn select<S: AsRef<str>>(assets: Vec<S>) -> Vec<S> {
     // Sort unwanted suffixes to the end
     sort_list(
         assets,
-        &[".pdb", ".dll", ".txt", ".checksum", ".sha", ".sha256"]
+        [".pdb", ".dll", ".txt", ".checksum", ".sha", ".sha256"]
             .map(|item| (item, MatchPos::End))
             .as_ref(),
         Combination::Any,

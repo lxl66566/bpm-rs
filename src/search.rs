@@ -148,7 +148,7 @@ impl Repo {
                 .api_base()
                 .join_all_str(["repos", owner, name, "releases"])?
                 .as_str(),
-            &[("per_page", per_page)],
+            [("per_page", per_page)],
         )?;
 
         debug!("Fetch releases from API: {api}");
@@ -290,7 +290,7 @@ impl Searchable for Repo {
                 .join_all_str(["search", "repositories"])?
                 .as_str()
                 .trim_matches('/'),
-            &[
+            [
                 ("q", format!("{} in:name", self.name).as_str()),
                 ("page", "1"),
                 ("sort", sort.as_ref()),

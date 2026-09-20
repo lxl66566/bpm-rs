@@ -63,14 +63,6 @@ impl Site {
     }
 }
 
-impl fmt::Display for Site {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Github => write!(f, "github"),
-        }
-    }
-}
-
 /// Preference for libc variant when selecting assets.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -243,12 +235,6 @@ impl Repo {
         self.site.base().join_all_str([owner, repo_name]).ok()
     }
 
-    pub fn add_file_list(&mut self, file: impl AsRef<Path>) {
-        let file = file.as_ref().to_path_buf();
-        debug!("add file `{}` to file_list", file.display());
-        self.installed_files.insert(file);
-    }
-
     pub fn set_by_fullname(&mut self, full_name: &str) -> Result<()> {
         let res = split_full_name(full_name)?;
         debug!("set repo_name: {}, repo_owner: {}", res.1, res.0);
@@ -343,10 +329,6 @@ impl RepoList {
     #[must_use]
     pub fn into_inner(self) -> Vec<Repo> {
         self.0
-    }
-
-    pub fn push(&mut self, repo: Repo) {
-        self.0.push(repo);
     }
 
     /// Insert or replace a repo matched by name (upsert).
@@ -529,8 +511,8 @@ mod tests {
         let p2: PathBuf = "/usr/share/foo".into();
 
         for _ in 0..2 {
-            repo.add_file_list(&p1);
-            repo.add_file_list(&p2);
+            repo.installed_files.insert(p1.clone());
+            repo.installed_files.insert(p2.clone());
         }
 
         assert_eq!(repo.installed_files.len(), 2);

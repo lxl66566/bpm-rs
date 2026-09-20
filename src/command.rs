@@ -271,10 +271,16 @@ pub async fn install_single(
     let tmp_path = tmp_dir.path();
 
     let main_path = if let Some(local) = local_path {
-        let dest = tmp_path.join("local");
-        if local.is_dir() {
+        let is_dir = local.is_dir();
+        if is_dir && ctx.dry_run {
+            // Dry-run never writes to src (both installers guard their
+            // moves), so read the directory in place instead of copying
+            // potentially gigabytes into the temp dir.
+            local.to_path_buf()
+        } else if is_dir {
             // Copy (never move) the directory so the user's source stays
             // intact — the Windows installer moves directory contents.
+            let dest = tmp_path.join("local");
             let mut options = fs_extra::dir::CopyOptions::new();
             options.content_only = true;
             options.overwrite = true;
@@ -282,12 +288,15 @@ pub async fn install_single(
             fs_extra::dir::copy(local, &dest, &options)?;
             dest
         } else {
+            // Archive: `unzip` consumes (deletes) its input, so extract from
+            // a temp copy to keep the user's original file. Temp-only
+            // writes, also on dry-run — contents cannot be inspected
+            // without extracting.
+            let dest = tmp_path.join("local");
             std::fs::create_dir_all(&dest)?;
-            std::fs::copy(local, dest.join(local.file_name().unwrap()))?;
-            unzip::unzip(
-                dest.join(local.file_name().unwrap()),
-                tmp_path.join("extracted"),
-            )?
+            let archive = dest.join(local.file_name().unwrap());
+            std::fs::copy(local, &archive)?;
+            unzip::unzip(archive, tmp_path.join("extracted"))?
         }
     } else {
         let downloaded = download::download(vec![&*repo], tmp_path, ctx.quiet).await?;

@@ -7,13 +7,13 @@ use bin_package_manager::{
 };
 use common::*;
 
-fn install_cli(zip_path: &std::path::Path, dry_run: bool) -> Cli {
+fn install_cli(local_path: &std::path::Path, dry_run: bool) -> Cli {
     Cli {
         command: SubCommand::Install {
             opts: InstallOptions {
                 packages: vec!["test-app".to_string()],
                 bin_name: None,
-                local: Some(zip_path.to_path_buf()),
+                local: Some(local_path.to_path_buf()),
                 one_bin: false,
                 prefer_musl: false,
                 interactive: false,
@@ -103,6 +103,29 @@ async fn dry_run_install_has_no_windows_side_effects() {
     );
 
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Dry-run from a local directory reads the source in place (no copy to
+/// temp) and leaves both source and db untouched.
+#[tokio::test]
+async fn dry_run_install_from_local_directory() {
+    let env = TestEnv::new();
+    let src_dir = env.tmp().join("unpacked");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("test-app"), b"binary").unwrap();
+
+    dispatch(install_cli(&src_dir, true), env.ctx())
+        .await
+        .unwrap();
+
+    assert!(
+        src_dir.join("test-app").exists(),
+        "dry run must not touch the source directory"
+    );
+    assert!(
+        env.db().get_repo("test-app").is_none(),
+        "dry run should not create db entry"
+    );
 }
 
 #[tokio::test]

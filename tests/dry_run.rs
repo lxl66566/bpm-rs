@@ -127,9 +127,11 @@ async fn dry_run_context_remove_keeps_files() {
     let ctx = env.ctx().with_dry_run(true);
     dispatch(remove_cli, ctx).await.unwrap();
 
+    // Dry-run remove keeps the DB record, mirroring install's dry-run
+    // semantics (it used to be deleted unconditionally).
     assert!(
-        env.db().get_repo("test-app").is_none(),
-        "db.remove_repo is called regardless of dry_run"
+        env.db().get_repo("test-app").is_some(),
+        "dry-run must not remove the db entry"
     );
     assert!(
         env.app_path().join("test-app").exists(),

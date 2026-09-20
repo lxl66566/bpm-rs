@@ -320,7 +320,10 @@ pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Res
             if !soft {
                 repo.uninstall(ctx)?;
             }
-            db.remove_repo(name)?;
+            // Mirror install's dry-run semantics: no DB writes either.
+            if !ctx.dry_run {
+                db.remove_repo(name)?;
+            }
             info!("`{name}` removed successfully.");
         } else {
             info!("Package `{name}` is not installed.");

@@ -170,6 +170,12 @@ impl DbOperation for Db {
         Self: Sized,
     {
         let db_path = path.as_ref().to_path_buf();
+        // First run on Unix: nothing creates the db parent dir (~/bpm) before
+        // this point, and the lock file open below would fail with NotFound.
+        // config-file2 only creates the dir on store, which runs later.
+        if let Some(parent) = db_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         // Lock BEFORE reading so a concurrent writer cannot make us load
         // stale state.
         let lock = ProcessLock::acquire(&db_path)?;
@@ -218,6 +224,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test_db.ron");
         (dir, path)
+    }
+
+    #[test]
+    fn test_db_creates_missing_parent_dir() -> Result<()> {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("nested/bpm/db.json");
+        let db = Db::create_or_open(&db_path)?;
+        db.insert_repo(Repo::default())?;
+        assert!(db_path.exists());
+        Ok(())
     }
 
     #[test]

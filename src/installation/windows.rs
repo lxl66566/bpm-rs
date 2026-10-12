@@ -28,13 +28,86 @@ fn move_dir_content(src_dir: &Path, dst_dir: &Path, dry_run: bool) -> Result<()>
     options.overwrite = true;
 
     // move_dir handles same-device rename and cross-device copy+delete.
-    fs_extra::dir::move_dir(src_dir, dst_dir, &options)?;
+    fs_extra::dir::move_dir(src_dir, dst_dir, &options).map_err(|e| {
+        anyhow::anyhow!(
+            "move `{:?}` -> `{:?}` failed: {e} (is a program from this package running?)",
+            src_dir.display(),
+            dst_dir.display()
+        )
+    })?;
     info!(
         "Moved contents: `{:?}` -> `{:?}`",
         src_dir.display(),
         dst_dir.display()
     );
     Ok(())
+}
+
+/// Suffix for files renamed aside to dodge the running-exe lock. Windows
+/// cannot delete or overwrite a running exe, but it can rename one; the
+/// renamed copy is swept by a later install once its process has exited.
+const ASIDE_SUFFIX: &str = ".old";
+
+/// The `<name>.old` counterpart of `path`.
+fn aside_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(ASIDE_SUFFIX);
+    path.with_file_name(name)
+}
+
+/// Rename `path` to `<path>.old`, replacing any earlier leftover. A leftover
+/// is only still locked while its owning process lives on.
+fn rename_aside(path: &Path) -> std::io::Result<()> {
+    let aside = aside_path(path);
+    let _ = fs::remove_file(&aside);
+    fs::rename(path, &aside)
+}
+
+/// Best-effort removal of `<name>.exe.old` leftovers from earlier updates:
+/// only exe files are ever renamed aside, and by now their process has
+/// exited.
+fn sweep_aside(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".exe.old")
+        {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Case-insensitive `Path::starts_with` for Windows, where paths from
+/// different sources may differ only in case (`C:\Users` vs `c:\users`).
+fn starts_with_ignore_case(path: &Path, prefix: &Path) -> bool {
+    let lower = |p: &Path| -> Vec<_> {
+        p.components()
+            .map(|c| c.as_os_str().to_ascii_lowercase())
+            .collect()
+    };
+    let (path, prefix) = (lower(path), lower(prefix));
+    prefix.len() <= path.len() && prefix.iter().zip(&path).all(|(a, b)| a == b)
+}
+
+/// bpm updating itself: the running exe inside `app_dir` is locked, so rename
+/// it aside to free its path for the incoming move.
+fn retire_running_exe(app_dir: &Path) {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    if starts_with_ignore_case(&exe, app_dir)
+        && let Err(e) = rename_aside(&exe)
+    {
+        warn!(
+            "failed to rename the running exe `{:?}`: {e}",
+            exe.display()
+        );
+    }
 }
 
 /// Find the MSI installer among the extraction result, if any.
@@ -119,7 +192,11 @@ impl Repo {
             )
             .collect();
         for p in &paths {
-            let _ = fs::remove_file(p);
+            // A running shim exe cannot be deleted on Windows; rename it
+            // aside so recreation below can take the original path.
+            if fs::remove_file(p).is_err() && p.is_file() {
+                let _ = rename_aside(p);
+            }
             self.installed_files.remove(p);
         }
     }
@@ -156,6 +233,12 @@ impl Installation for Repo {
         }
 
         let app_dir = ctx.app_path().join(&self.name);
+
+        if !ctx.dry_run {
+            sweep_aside(&app_dir);
+            sweep_aside(&ctx.bin_path());
+            retire_running_exe(&app_dir);
+        }
 
         // Move the directory as a whole; individual files inside are not
         // tracked.
@@ -450,5 +533,49 @@ mod tests {
         let mut repo = Repo::new("foo");
         repo.remove_shim_artifacts(&base);
         assert!(repo.installed_files.is_empty());
+    }
+
+    #[test]
+    fn test_rename_aside_replaces_leftover() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bpm.exe");
+
+        fs::write(&file, "new").unwrap();
+        rename_aside(&file).unwrap();
+        assert!(!file.exists());
+        assert_eq!(fs::read(dir.path().join("bpm.exe.old")).unwrap(), b"new");
+
+        // A second rename replaces the earlier leftover, not errors on it.
+        fs::write(&file, "newer").unwrap();
+        rename_aside(&file).unwrap();
+        assert_eq!(fs::read(dir.path().join("bpm.exe.old")).unwrap(), b"newer");
+    }
+
+    #[test]
+    fn test_sweep_aside_removes_only_exe_old() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("bpm.exe.old"), "x").unwrap();
+        fs::write(dir.path().join("OTHER.EXE.OLD"), "x").unwrap();
+        fs::write(dir.path().join("bpm.exe"), "x").unwrap();
+        fs::write(dir.path().join("notes.old"), "x").unwrap();
+
+        sweep_aside(dir.path());
+
+        assert!(!dir.path().join("bpm.exe.old").exists());
+        assert!(!dir.path().join("OTHER.EXE.OLD").exists());
+        assert!(dir.path().join("bpm.exe").exists());
+        assert!(dir.path().join("notes.old").exists());
+    }
+
+    #[test]
+    fn test_starts_with_ignore_case() {
+        assert!(starts_with_ignore_case(
+            Path::new(r"c:\USERS\lxl\bpm\app\bpm\bpm.exe"),
+            Path::new(r"C:\Users\lxl\bpm\app\bpm")
+        ));
+        assert!(!starts_with_ignore_case(
+            Path::new(r"C:\Users\lxl\bpm\app\bpm-other\bpm.exe"),
+            Path::new(r"C:\Users\lxl\bpm\app\bpm")
+        ));
     }
 }

@@ -58,4 +58,9 @@ if ($bpmInDb) {
     & $BpmExe install --local $Zip bpm
 }
 
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "bpm setup failed."
+    exit $LASTEXITCODE
+}
+
 Write-Host "bpm ready! Run 'bpm --help' to get started."

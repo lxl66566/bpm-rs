@@ -50,9 +50,14 @@ if ($bpmInstalled) {
     }
 }
 
+# Both branches run the freshly downloaded $BpmExe, never the installed
+# `bpm`: the installed exe lives in the app dir and stays locked while it
+# runs, so an in-place self-update cannot replace it (the fs_extra move fails
+# with an io error). The downloaded copy runs from the temp dir and leaves the
+# installed exe unlocked.
 if ($bpmInDb) {
     Write-Host "Updating bpm..."
-    & bpm update bpm --local $Zip
+    & $BpmExe update bpm --local $Zip
 } else {
     Write-Host "Installing bpm..."
     & $BpmExe install --local $Zip bpm

@@ -187,7 +187,7 @@ fn extract_tar_sz(reader: impl Read, output: &Path) -> Result<()> {
 }
 
 fn extract_tar_zst(reader: impl Read, output: &Path) -> Result<()> {
-    let decoder = zstd::stream::Decoder::new(reader)?;
+    let decoder = zstdx::stream::read::Decoder::new(reader)?;
     tar::Archive::new(decoder).unpack(output)?;
     Ok(())
 }
@@ -317,7 +317,7 @@ fn decompress_single(reader: impl Read, output_file: &Path, format: ArchiveForma
         )?),
         ArchiveFormat::Lzip => Box::new(lzma_rust2::LzipReader::new(reader)),
         ArchiveFormat::Snappy => Box::new(snap::read::FrameDecoder::new(reader)),
-        ArchiveFormat::Zstd => Box::new(zstd::stream::Decoder::new(reader)?),
+        ArchiveFormat::Zstd => Box::new(zstdx::stream::read::Decoder::new(reader)?),
         ArchiveFormat::Brotli => Box::new(brotli::Decompressor::new(reader, 4096)),
         _ => unreachable!(),
     };

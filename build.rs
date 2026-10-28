@@ -34,7 +34,7 @@ fn main() {
     assert!(status.success(), "rustc failed for shim");
 
     let raw = std::fs::read(&exe_path).expect("failed to read compiled shim");
-    let compressed = zstd::bulk::compress(&raw, 19).expect("failed to zstd-compress shim");
+    let compressed = zstdx::bulk::compress(&raw, zstdx::Level::Ultra);
     std::fs::write(&zst_path, compressed).expect("failed to write compressed shim");
 
     println!("cargo:rerun-if-changed=shim.rs");

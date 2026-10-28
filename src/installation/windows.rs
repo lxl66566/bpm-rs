@@ -387,7 +387,7 @@ fn ensure_base_shim(ctx: &Context) -> Result<PathBuf> {
     }
 
     let compressed = include_bytes!(concat!(env!("OUT_DIR"), "/bpm-shim.exe.zst"));
-    let mut decoder = zstd::Decoder::new(Cursor::new(compressed))?;
+    let mut decoder = zstdx::stream::read::Decoder::new(Cursor::new(compressed))?;
     let mut output = File::create(&shim_path)?;
     std::io::copy(&mut decoder, &mut output)?;
     info!("extracted base shim to {}", shim_path.display());

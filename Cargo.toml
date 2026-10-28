@@ -1,6 +1,6 @@
 [package]
 name        = "bin-package-manager"
-version     = "0.3.0"
+version     = "0.3.1"
 edition     = "2024"
 description = "A binary package manager based on GitHub Releases"
 repository  = "https://github.com/lxl66566/bpm-rs"
@@ -33,7 +33,7 @@ bzip3               = { version = "0.13", features = ["bundled"] }
 clap                = { version = "4.6", features = ["derive"] }
 colored             = { version = "3", optional = true }
 comfy-table         = "8"
-config-file2        = { version = "0.7", features = ["all"] }
+config-file2        = { version = "0.8", features = ["all"] }
 dialoguer           = { version = "0.12", features = ["fuzzy-select"] }
 flate2              = "1"
 flexi_logger        = { version = "0.31", optional = true }
@@ -42,30 +42,30 @@ fs4                 = "1.1.0"
 home                = "0.5"
 log                 = "0.4"
 lz4_flex            = "0.14"
-lzma-rust2          = "0.21"
+lzma-rust2          = "0.24"
 path-absolutize     = "4"
 reqwest             = { version = "0.13", features = ["json"] }
 serde               = { version = "1", features = ["derive"] }
 serde_json          = "1"
-sevenz-rust2        = { version = "0.23" }
+sevenz-rust2        = { version = "0.24" }
 snap                = "1"
 strum_macros        = "0.28"
 tar                 = "0.4"
 tempfile            = "3"
-tokio               = { version = "1.52", features = ["macros", "rt", "rt-multi-thread", "signal"] }
+tokio               = { version = "1", features = ["macros", "rt", "rt-multi-thread", "signal"] }
 url                 = { version = "2", features = ["serde"] }
 walkdir             = "2.5"
-zip                 = "8.6"
-zstd                = "0.14"
+zip                 = "9"
+zstdx               = "0.3"
 
 [build-dependencies]
-zstd = "0.14"
+zstdx = "0.3"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.189"
 
 [target."cfg(windows)".dependencies]
-windows-env = "0.3.0"
+windows-env = "0.3"
 
 [features]
 default = ["bin"]

@@ -1,6 +1,6 @@
 [package]
 name        = "bin-package-manager"
-version     = "0.3.1"
+version     = "0.3.2"
 edition     = "2024"
 description = "A binary package manager based on GitHub Releases"
 repository  = "https://github.com/lxl66566/bpm-rs"

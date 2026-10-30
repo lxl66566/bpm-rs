@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, ensure};
-use bpm_trauma::{
+use bin_package_manager_trauma::{
     download::{Download, Status},
     downloader::{Downloader, ProgressBarOpts, StyleOptions},
 };

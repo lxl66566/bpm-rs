@@ -1,13 +1,12 @@
 [package]
-authors     = ["lxl66566 <lxl66566@gmail.com>"]
-categories  = ["value-formatting"]
-description = "Select the best match item based on platform and architecture. Used for github assets selection."
-edition     = "2024"
-homepage    = "https://github.com/lxl66566/bpm-rs/tree/main/architecture-select"
-keywords    = ["arch", "architecture", "select", "select-arch", "system"]
-license     = "MIT"
 name        = "architecture-select"
-repository  = "https://github.com/lxl66566/bpm-rs/"
 version     = "0.2.0"
+edition     = "2024"
+description = "Select the best match item based on platform and architecture. Used for github assets selection."
+homepage    = "https://github.com/lxl66566/bpm-rs/tree/main/architecture-select"
+repository  = "https://github.com/lxl66566/bpm-rs/"
+license     = "MIT"
+keywords    = ["arch", "architecture", "select", "select-arch", "system"]
+categories  = ["value-formatting"]
 
 [dependencies]

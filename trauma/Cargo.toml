@@ -1,5 +1,5 @@
 [package]
-name        = "bpm-trauma"
+name        = "bin-package-manager-trauma"
 version     = "3.0.0"
 edition     = "2024"
 description = "A fork of the trauma crate: simple asynchronous HTTP downloads with progress bars, tailored for bpm"

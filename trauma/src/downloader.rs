@@ -31,7 +31,7 @@ const RETRY_BASE_DELAY_MS: u64 = 500;
 ///
 /// ```rust
 /// # fn main()  {
-/// use bpm_trauma::downloader::Downloader;
+/// use bin_package_manager_trauma::downloader::Downloader;
 ///
 /// let d = Downloader::builder().build();
 /// # }

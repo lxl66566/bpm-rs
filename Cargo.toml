@@ -36,18 +36,18 @@ comfy-table                = "8"
 config-file2               = { version = "0.8", features = ["all"] }
 dialoguer                  = { version = "0.12", features = ["fuzzy-select"] }
 flate2                     = "1"
-flexi_logger               = { version = "0.31", optional = true }
+flexi_logger               = { version = "0.32", optional = true }
 fs_extra                   = "1.3"
 fs4                        = "1.1.0"
 home                       = "0.5"
 log                        = "0.4"
 lz4_flex                   = "0.14"
-lzma-rust2                 = "0.24"
+lzma-rust2                 = "0.25"
 path-absolutize            = "4"
 reqwest                    = { version = "0.13", features = ["json"] }
 serde                      = { version = "1", features = ["derive"] }
 serde_json                 = "1"
-sevenz-rust2               = { version = "0.24" }
+sevenz-rust2               = { version = "0.25" }
 snap                       = "1"
 strum_macros               = "0.28"
 tar                        = "0.4"
@@ -56,10 +56,10 @@ tokio                      = { version = "1", features = ["macros", "rt", "rt-mu
 url                        = { version = "2", features = ["serde"] }
 walkdir                    = "2.5"
 zip                        = "9"
-zstdx                      = "0.3"
+zstdx                      = "0.7"
 
 [build-dependencies]
-zstdx = "0.3"
+zstdx = "0.7"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.189"

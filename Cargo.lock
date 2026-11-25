@@ -152,7 +152,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bin-package-manager"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "architecture-select",
@@ -161,6 +161,7 @@ dependencies = [
  "brotli",
  "bzip2",
  "bzip3",
+ "cargo-husky",
  "clap",
  "colored",
  "comfy-table",
@@ -174,7 +175,7 @@ dependencies = [
  "libc",
  "log",
  "lz4_flex",
- "lzma-rust2",
+ "lzma-rust2 0.26.0",
  "path-absolutize",
  "reqwest",
  "serde",
@@ -344,6 +345,12 @@ dependencies = [
  "static_assertions",
  "thiserror",
 ]
+
+[[package]]
+name = "cargo-husky"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b02b629252fe8ef6460461409564e2c21d0c8e77e0944f3d189ff06c4e932ad"
 
 [[package]]
 name = "cbc"
@@ -1596,6 +1603,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-rust2"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c7861572250348d13073a9035c6a83f3e583ec9a76a65ce92f338fe1107d8f5"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2284,9 +2300,9 @@ dependencies = [
 
 [[package]]
 name = "sevenz-rust2"
-version = "0.25.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5e465701779cbc6d0d10cf907f175035cfdd50b8d3cb628d7f1f435ef02972f"
+checksum = "2e668242e054ba8b7360918104c30c6685bdedf847909a784cf267d002f40a6a"
 dependencies = [
  "aes",
  "bzip2",
@@ -2294,7 +2310,7 @@ dependencies = [
  "crc32fast",
  "getrandom 0.4.3",
  "js-sys",
- "lzma-rust2",
+ "lzma-rust2 0.26.0",
  "ppmd-rust",
  "sha2",
  "wasm-bindgen",
@@ -2313,9 +2329,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
+checksum = "5b0e5c7d67bc53f435386b2130fdc900488c5703770f6d8a4633060e34288a27"
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -3378,7 +3394,7 @@ dependencies = [
  "hmac",
  "indexmap",
  "libc",
- "lzma-rust2",
+ "lzma-rust2 0.25.0",
  "memchr",
  "nix",
  "pbkdf2",
@@ -3446,9 +3462,9 @@ dependencies = [
 
 [[package]]
 name = "zstdx"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9111a0ea06ff41c09839cab6760e23d9ad6e2264c9898f8ec2b7fa3099ee2c54"
+checksum = "92b2a7e9209e17a2695392c7be3d8c3aa36a3b6fd8595e2dfd3a1a36404248e0"
 dependencies = [
  "libc",
  "thiserror",

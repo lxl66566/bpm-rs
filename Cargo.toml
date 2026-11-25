@@ -1,6 +1,6 @@
 [package]
 name        = "bin-package-manager"
-version     = "0.3.2"
+version     = "0.3.3"
 edition     = "2024"
 description = "A binary package manager based on GitHub Releases"
 repository  = "https://github.com/lxl66566/bpm-rs"
@@ -42,12 +42,12 @@ fs4                        = "1.1.0"
 home                       = "0.5"
 log                        = "0.4"
 lz4_flex                   = "0.14"
-lzma-rust2                 = "0.25"
+lzma-rust2                 = "0.26"
 path-absolutize            = "4"
 reqwest                    = { version = "0.13", features = ["json"] }
 serde                      = { version = "1", features = ["derive"] }
 serde_json                 = "1"
-sevenz-rust2               = { version = "0.25" }
+sevenz-rust2               = { version = "0.27" }
 snap                       = "1"
 strum_macros               = "0.28"
 tar                        = "0.4"
@@ -57,6 +57,11 @@ url                        = { version = "2", features = ["serde"] }
 walkdir                    = "2.5"
 zip                        = "9"
 zstdx                      = "0.7"
+
+[dev-dependencies.cargo-husky]
+version          = "1"
+default-features = false
+features         = ["precommit-hook", "run-cargo-fmt"]
 
 [build-dependencies]
 zstdx = "0.7"

@@ -1,15 +1,17 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     time::SystemTime,
 };
 
 use anyhow::{Result, anyhow, bail, ensure};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
+use url::Url;
 
 use crate::{
     cli::InstallOptions,
     context::Context,
-    installation::{Installation, download, unzip},
+    installation::{Installation, cache::DownloadCache, download, unzip},
     search::{Searchable, UpdateCheck},
     storage::{InstalledFiles, LibcPref, Repo, RepoList, db::DbOperation},
 };
@@ -169,23 +171,38 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
         }
     }
 
-    // Phase 4: Batch download (trauma handles internal parallelism)
+    // Phase 4: restore archives cached from a previous failed install, then
+    // batch-download the rest (trauma handles internal parallelism).
     let download_tmp = tempfile::tempdir()?;
-    let repo_refs: Vec<&Repo> = repos.iter().collect();
-    let downloaded = download::download(repo_refs, download_tmp.path(), ctx.quiet).await?;
+    let cache = ctx.download_cache();
+    let downloaded = fetch_archives(&cache, &repos, download_tmp.path(), ctx.quiet).await?;
     ensure!(!downloaded.is_empty(), "No files downloaded.");
 
     // Phase 5: Unzip and install each repo (two-phase: install all, then commit DB)
     let mut installed: Vec<Repo> = Vec::with_capacity(repos.len());
+    // (repo name, asset URL) pairs for cache bookkeeping below; `repos` is
+    // consumed by the loop, so the URLs must be captured up front.
+    let assets: Vec<(String, String)> = repos
+        .iter()
+        .filter_map(|r| Some((r.name.clone(), r.asset.clone()?)))
+        .collect();
     for mut repo in repos {
         // Safe point for graceful Ctrl-C cancellation: bailing here runs
         // the rollback below instead of leaving orphan files behind.
-        ensure!(
-            !crate::utils::cancelled(),
-            "cancelled by user, rolling back"
-        );
+        if crate::utils::cancelled() {
+            cache_failed_batch(&cache, &downloaded, &assets, None, ctx.dry_run);
+            bail!("cancelled by user, rolling back");
+        }
 
-        let main_path = extract_downloaded(&downloaded, download_tmp.path(), &repo)?;
+        let main_path = match extract_downloaded(&downloaded, download_tmp.path(), &repo) {
+            Ok(path) => path,
+            Err(e) => {
+                // Corrupt archive: cache the rest of the batch but never this
+                // asset (nor any stale copy of it), so a retry re-downloads.
+                cache_failed_batch(&cache, &downloaded, &assets, Some(&repo.name), ctx.dry_run);
+                return Err(e);
+            },
+        };
 
         match repo.install(&main_path, ctx) {
             Ok(()) => {
@@ -206,13 +223,20 @@ pub async fn cli_install(ctx: &Context, opts: InstallOptions) -> Result<()> {
                     }
                 }
                 rollback_failed_install(ctx, &repo, &InstalledFiles::new());
+                // The batch is all-or-nothing: cache every archive so the
+                // retry skips re-downloading them.
+                cache_failed_batch(&cache, &downloaded, &assets, None, ctx.dry_run);
                 return Err(e);
             },
         }
     }
 
-    // Commit: all installations succeeded, now persist to DB
+    // Commit: all installations succeeded, now persist to DB and drop the
+    // packages' cached archives (a successful install caches nothing).
     if !ctx.dry_run {
+        for repo in &installed {
+            cache.clear(&repo.name);
+        }
         for repo in installed {
             db.insert_repo(repo)?;
         }
@@ -234,6 +258,117 @@ fn extract_downloaded(
         .ok_or_else(|| anyhow!("No downloaded file for {}", repo.name))?;
     let extracted = tmp.join(format!("{}_extracted", repo.name));
     unzip::unzip(file, extracted)
+}
+
+/// Resolve the archives for `repos`: cached entries from a previous failed
+/// install are copied back under their canonical download filename, the
+/// rest are batch-downloaded into `download_tmp`. Returns one
+/// `(repo name, archive path)` pair per repo, cache hits and fresh downloads
+/// alike.
+async fn fetch_archives(
+    cache: &DownloadCache,
+    repos: &[Repo],
+    download_tmp: &Path,
+    quiet: bool,
+) -> Result<Vec<(String, PathBuf)>> {
+    let mut downloaded: Vec<(String, PathBuf)> = Vec::with_capacity(repos.len());
+    let mut to_download: Vec<&Repo> = Vec::new();
+    for repo in repos {
+        // A repo without asset falls through to download(), which reports
+        // the precise error.
+        if let Some(url) = repo.asset.as_deref()
+            && let Ok(parsed) = Url::parse(url)
+            && let Some(entry) = cache.get(&repo.name, url)
+        {
+            // Restore under the canonical filename: extraction stages
+            // downstream (e.g. naming of decompressed single files) must
+            // not see the cache key.
+            let dest = download_tmp.join(download::download_filename(&repo.name, &parsed)?);
+            // Hard-link when possible: the cache and the tempdir usually
+            // share a volume, and archives can be large.
+            fs::hard_link(&entry, &dest).or_else(|_| fs::copy(&entry, &dest).map(|_| ()))?;
+            info!("Using cached download of `{}`.", repo.name);
+            downloaded.push((repo.name.clone(), dest));
+        } else {
+            to_download.push(repo);
+        }
+    }
+    if !to_download.is_empty() {
+        downloaded.extend(download::download(to_download, download_tmp, quiet).await?);
+    }
+    Ok(downloaded)
+}
+
+/// Failure stage deciding the cache bookkeeping of a package.
+#[derive(Debug, Clone, Copy)]
+enum CacheFailure {
+    /// The archive failed to extract: it is never cached (likely corrupt),
+    /// and a stale entry of the same asset is dropped so a retry
+    /// re-downloads it.
+    Extract,
+    /// Extraction succeeded but the install did not: keep the archive so
+    /// a retry skips re-downloading it.
+    Install,
+}
+
+/// Cache bookkeeping of one package after a failed install/update. No-op
+/// on dry-run.
+fn cache_failure(
+    cache: &DownloadCache,
+    downloaded: &[(String, PathBuf)],
+    name: &str,
+    url: &str,
+    kind: CacheFailure,
+    dry_run: bool,
+) {
+    if dry_run {
+        return;
+    }
+    match kind {
+        CacheFailure::Extract => cache.invalidate(name, url),
+        CacheFailure::Install => {
+            let Some((_, path)) = downloaded.iter().find(|(n, _)| n == name) else {
+                return;
+            };
+            if let Err(e) = cache.store(name, url, path) {
+                warn!("Failed to cache download of `{name}`: {e}");
+            }
+        },
+    }
+}
+
+/// After a failed install batch, cache every downloaded archive so a
+/// retry skips re-downloading it. `extract_failed` names the repo whose
+/// archive could not be extracted: it is left uncached and any stale copy
+/// of it is dropped. No-op on dry-run.
+fn cache_failed_batch(
+    cache: &DownloadCache,
+    downloaded: &[(String, PathBuf)],
+    assets: &[(String, String)],
+    extract_failed: Option<&str>,
+    dry_run: bool,
+) {
+    for (name, url) in assets {
+        let kind = if Some(name.as_str()) == extract_failed {
+            CacheFailure::Extract
+        } else {
+            CacheFailure::Install
+        };
+        cache_failure(cache, downloaded, name, url, kind, dry_run);
+    }
+}
+
+/// Cache bookkeeping of `repo` after a failed update. No-op on dry-run.
+fn cache_update_failure(
+    cache: &DownloadCache,
+    downloaded: &[(String, PathBuf)],
+    repo: &Repo,
+    kind: CacheFailure,
+    dry_run: bool,
+) {
+    if let Some(url) = repo.asset.as_deref() {
+        cache_failure(cache, downloaded, &repo.name, url, kind, dry_run);
+    }
 }
 
 /// Roll back a failed install attempt: uninstall only the files the attempt
@@ -313,19 +448,14 @@ pub async fn install_single(
             let mut options = fs_extra::dir::CopyOptions::new();
             options.content_only = true;
             options.overwrite = true;
-            std::fs::create_dir_all(&dest)?;
+            fs::create_dir_all(&dest)?;
             fs_extra::dir::copy(local, &dest, &options)?;
             dest
         } else {
-            // Archive: `unzip` consumes (deletes) its input, so extract from
-            // a temp copy to keep the user's original file. Temp-only
-            // writes, also on dry-run — contents cannot be inspected
-            // without extracting.
-            let dest = tmp_path.join("local");
-            std::fs::create_dir_all(&dest)?;
-            let archive = dest.join(local.file_name().unwrap());
-            std::fs::copy(local, &archive)?;
-            unzip::unzip(archive, tmp_path.join("extracted"))?
+            // `unzip` leaves the input intact, so extract straight from the
+            // user's file; the output goes to the temp dir, also on
+            // dry-run — contents cannot be inspected without extracting.
+            unzip::unzip(local, tmp_path.join("extracted"))?
         }
     } else {
         let downloaded = download::download(vec![&*repo], tmp_path, ctx.quiet).await?;
@@ -361,6 +491,9 @@ pub async fn cli_remove(ctx: &Context, packages: Vec<String>, soft: bool) -> Res
             // Mirror install's dry-run semantics: no DB writes either.
             if !ctx.dry_run {
                 db.remove_repo(name)?;
+                // A removed package never retries: its cached archives
+                // would only accumulate.
+                ctx.download_cache().clear(name);
             }
             info!("`{name}` removed successfully.");
         } else {
@@ -505,18 +638,30 @@ pub async fn cli_update(
         }
     }
 
-    // Phase 4 + 5: batch download (trauma parallelizes internally), then
-    // unzip and install sequentially — mirrors the cli_install pipeline
-    // instead of one tempdir + download + install per package.
+    // Phase 4 + 5: restore cached archives / batch download (trauma
+    // parallelizes internally), then unzip and install sequentially —
+    // mirrors the cli_install pipeline instead of one tempdir + download +
+    // install per package.
     if !to_install.is_empty() {
         let download_tmp = tempfile::tempdir()?;
-        let repo_refs: Vec<&Repo> = to_install.iter().collect();
-        match download::download(repo_refs, download_tmp.path(), ctx.quiet).await {
+        let cache = ctx.download_cache();
+        match fetch_archives(&cache, &to_install, download_tmp.path(), ctx.quiet).await {
             Ok(downloaded) => {
                 for mut repo in to_install {
                     if crate::utils::cancelled() {
                         error!("Cancelled by user, skipping update for {}.", repo.name);
                         failed.push(repo.name.clone());
+                        // Keep the not-installed archive so a retry skips
+                        // re-downloading it, mirroring cli_install.
+                        // `cancelled` latches, so every remaining repo
+                        // reaches this branch too.
+                        cache_update_failure(
+                            &cache,
+                            &downloaded,
+                            &repo,
+                            CacheFailure::Install,
+                            ctx.dry_run,
+                        );
                         continue;
                     }
                     let repo_name = repo.name.clone();
@@ -527,6 +672,16 @@ pub async fn cli_update(
                             Err(e) => {
                                 failed.push(repo_name.clone());
                                 error!("Failed to update {repo_name}: {e}");
+                                // Corrupt archive: drop the cached copy so a
+                                // retry re-downloads instead of hitting the
+                                // poison entry again.
+                                cache_update_failure(
+                                    &cache,
+                                    &downloaded,
+                                    &repo,
+                                    CacheFailure::Extract,
+                                    ctx.dry_run,
+                                );
                                 continue;
                             },
                         };
@@ -534,11 +689,22 @@ pub async fn cli_update(
                         Ok(()) => {
                             repo.installed_time = Some(SystemTime::now());
                             db.insert_repo(repo)?;
+                            // A successful update leaves nothing cached.
+                            if !ctx.dry_run {
+                                cache.clear(&repo_name);
+                            }
                             info!("`{repo_name}` updated successfully.");
                         },
                         Err(e) => {
                             failed.push(repo_name.clone());
                             error!("Failed to update {repo_name}: {e}");
+                            cache_update_failure(
+                                &cache,
+                                &downloaded,
+                                &repo,
+                                CacheFailure::Install,
+                                ctx.dry_run,
+                            );
                             rollback_failed_install(ctx, &repo, &before);
                         },
                     }
@@ -733,6 +899,16 @@ pub async fn cli_doctor(ctx: &Context) -> Result<()> {
     let all_repos = db.get_repo_list();
     let mut issues = 0u32;
 
+    // A failed install leaves its archives cached until the next
+    // successful one; entries of packages that never retry again are
+    // removed here, doctor being the global cleanup point.
+    for name in ctx
+        .download_cache()
+        .clean_orphans(|n| db.get_repo(n).is_some())
+    {
+        info!("Removed stale download cache of `{name}`.");
+    }
+
     for repo in all_repos.as_slice() {
         let mut missing = 0u32;
         for file in &repo.installed_files {
@@ -761,6 +937,40 @@ pub async fn cli_doctor(ctx: &Context) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// A cached entry from a previous failed install must be restored under
+    /// the canonical download filename, without touching the network.
+    #[tokio::test]
+    async fn fetch_archives_restores_cached_entry() {
+        use std::fs;
+
+        use super::{Context, Repo, fetch_archives};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = Context::new()
+            .with_install_position(tmp.path().join("bpm"))
+            .with_db_path(tmp.path().join("db.ron"));
+        let url = "https://github.com/o/r/releases/download/v1.0/tool-linux.tar.gz";
+
+        let cache = ctx.download_cache();
+        let entry = cache.entry("tool", url);
+        fs::create_dir_all(entry.parent().unwrap()).unwrap();
+        fs::write(&entry, "archive").unwrap();
+
+        let mut repo = Repo::new("tool");
+        repo.asset = Some(url.to_string());
+
+        let download_tmp = tempfile::tempdir().unwrap();
+        let fetched = fetch_archives(&cache, &[repo], download_tmp.path(), true)
+            .await
+            .unwrap();
+
+        assert_eq!(fetched.len(), 1);
+        let (name, path) = &fetched[0];
+        assert_eq!(name, "tool");
+        assert_eq!(path, &download_tmp.path().join("tool.tar.gz"));
+        assert_eq!(fs::read(path).unwrap(), b"archive");
+    }
+
     /// Pin the P1-13 rollback contract for a failed update install: files
     /// the attempt added are removed (no orphans outside the DB record),
     /// interrupted writes are restored from their `.old` backup, and files

@@ -30,6 +30,27 @@ fn style_options(quiet: bool) -> StyleOptions {
     }
 }
 
+/// Last path segment of the asset URL, e.g. `tool-linux.tar.gz`. Shared
+/// with the cache layer so both name files through the same URL parsing
+/// (a query string must not leak into a filename).
+pub(crate) fn asset_filename(url: &Url) -> Result<String> {
+    url.path_segments()
+        .and_then(|mut s| s.next_back())
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!("asset URL has no filename: {}", url.as_str()))
+}
+
+/// Canonical download filename of an asset: `{name}{ext}`, keeping
+/// compound extensions (e.g. `.tar.gz`) intact. Also used by the cache
+/// layer to name restored copies, so a cached and a fresh download are
+/// indistinguishable to the extraction stage.
+pub(crate) fn download_filename(name: &str, url: &Url) -> Result<String> {
+    Ok(format!(
+        "{name}{}",
+        asset_filename(url)?.preserve_extension()
+    ))
+}
+
 pub async fn download(
     repos: Vec<&Repo>,
     to: impl Into<PathBuf>,
@@ -54,15 +75,7 @@ pub async fn download(
         info!("Downloading `{}` from {url_str}", repo.name);
 
         let url = Url::parse(url_str).map_err(|e| anyhow!("invalid asset URL '{url_str}': {e}"))?;
-
-        let url_path = url
-            .path_segments()
-            .and_then(|mut s| s.next_back())
-            .ok_or_else(|| anyhow!("asset URL has no filename: {url_str}"))?;
-        let ext = url_path.preserve_extension();
-
-        let mut filename = repo.name.clone();
-        filename.push_str(ext);
+        let filename = download_filename(&repo.name, &url)?;
 
         // Build the request first, track the file only on success, otherwise
         // the result would contain paths that were never downloaded.

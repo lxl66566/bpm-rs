@@ -348,7 +348,10 @@ impl<R: Read> Read for MultiFrameLz4Decoder<R> {
     }
 }
 
-/// Extract the given archive and remove the archive file.
+/// Extract the given archive into `to`.
+///
+/// The input archive is left in place: the download cache stores it after
+/// a failed install, which happens only after extraction has run.
 ///
 /// # Returns
 ///
@@ -366,7 +369,6 @@ pub fn unzip(src: impl Into<PathBuf>, to: impl AsRef<Path>) -> Result<PathBuf> {
         if is_binary {
             fs::create_dir_all(to)?;
             fs::copy(&src, to.join(src.file_name().unwrap()))?;
-            fs::remove_file(&src)?;
             return Ok(to.to_path_buf());
         }
     }
@@ -385,8 +387,6 @@ pub fn unzip(src: impl Into<PathBuf>, to: impl AsRef<Path>) -> Result<PathBuf> {
         let output_file = to.join(output_filename);
         decompress_single(file, &output_file, format)?;
     }
-
-    fs::remove_file(&src)?;
 
     if let Some(folder) = only_one_file_in_dir(to)? {
         log::debug!(
@@ -590,20 +590,18 @@ mod tests {
     fn test_unzip() -> Result<()> {
         let assets_dir = PathBuf::from("test_assets");
         let tempdir = tempfile::tempdir()?;
-        let another_temp = tempfile::tempdir()?;
         for p in ["noroot.zip", "noroot.tar.gz", "root.tar.gz"] {
-            let true_src = assets_dir.join(p);
-            let src = another_temp.path().join(p);
-            // Because `unzip` will remove the archive file, so we need to copy before
-            // testing.
-            fs::copy(true_src, &src)?;
+            let src = assets_dir.join(p);
             let to = tempdir.path().join(p);
-            let main = unzip(src, &to)?;
+            let main = unzip(&src, &to)?;
             if p.starts_with("root") {
                 assert_eq!(main, to.join("root"));
             } else {
                 assert_eq!(main, to);
             }
+            // unzip never consumes its input; the download cache depends on
+            // the archive surviving extraction.
+            assert!(src.is_file());
         }
         Ok(())
     }

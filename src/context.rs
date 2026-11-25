@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::storage::db::DbOperation;
+use crate::{installation::cache::DownloadCache, storage::db::DbOperation};
 
 #[derive(Debug)]
 pub struct Context {
@@ -95,6 +95,14 @@ impl Context {
     #[must_use]
     pub fn bin_path(&self) -> PathBuf {
         self.install_position.join("bin")
+    }
+
+    /// Download cache under the bpm data dir: archives of failed installs
+    /// are kept there for retry.
+    #[inline]
+    #[must_use]
+    pub fn download_cache(&self) -> DownloadCache {
+        DownloadCache::new(self.install_position.join("cache"))
     }
 
     #[cfg(windows)]
